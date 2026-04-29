@@ -1,0 +1,33 @@
+{
+  "name": "Embaresa QC — Relatório de Embalamento",
+  "short_name": "Embaresa QC",
+  "description": "Aplicação de controlo de qualidade e registo de embalamento da Embaresa PT",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f0f2f5",
+  "theme_color": "#00d4ff",
+  "lang": "pt-PT",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["business", "productivity", "utilities"]
+}

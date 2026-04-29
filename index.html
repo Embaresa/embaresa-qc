@@ -1,0 +1,2283 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Embaresa QC">
+<meta name="theme-color" content="#00d4ff">
+<meta name="format-detection" content="telephone=no">
+<meta name="description" content="Embaresa QC — Aplicação de controlo de qualidade e registo de embalamento">
+
+<!-- PWA manifest -->
+<link rel="manifest" href="manifest.json">
+
+<!-- Icons (Android, iOS, fallbacks) -->
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+<link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png">
+
+<title>Embaresa QC — Relatório de Embalamento</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+    background: #f0f2f5;
+    color: #1a1a2e;
+    padding: 12px;
+    padding-bottom: 120px;
+    -webkit-text-size-adjust: 100%;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { text-align: center; font-size: 1.4rem; margin: 8px 0 2px; color: #1a1a2e; }
+  .subtitle { text-align: center; color: #666; font-size: 0.85rem; margin-bottom: 16px; }
+
+  .card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+  }
+  .card h2 {
+    font-size: 1rem;
+    margin: 0 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #00d4ff;
+    color: #1a1a2e;
+  }
+
+  .form-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+  .form-group { flex: 1; min-width: 160px; }
+  .form-group.full { flex: 100%; min-width: 100%; }
+  .form-group.small { flex: 0 0 calc(50% - 5px); min-width: 120px; }
+  label { display: block; font-size: 0.78rem; color: #555; margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  input, select, textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: inherit;
+    background: #fff;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: #00d4ff; box-shadow: 0 0 0 3px rgba(0,212,255,0.15); }
+  textarea { min-height: 80px; resize: vertical; }
+  select { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23666'><path d='M7 10l5 5 5-5z'/></svg>"); background-repeat: no-repeat; background-position: right 8px center; padding-right: 36px; }
+
+  .produto-info {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #e8f5e9;
+    border: 1px solid #4caf50;
+    display: none;
+  }
+  .produto-info.visible { display: block; }
+  .produto-info.fracao { background: #fff3e0; border-color: #ff9800; }
+  .produto-info .tipo { font-size: 0.7rem; color: #666; }
+  .produto-info .nome { font-weight: 600; color: #2e7d32; margin-top: 2px; }
+  .produto-info.fracao .nome { color: #e65100; }
+
+  /* Checklist */
+  .checklist-section { margin-bottom: 12px; }
+  .checklist-section h3 { font-size: 0.85rem; margin: 0 0 8px; padding: 6px 10px; background: #f6f8fa; border-radius: 6px; color: #333; }
+  .check-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: #fafbfc;
+    border: 1px solid #eef0f2;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    gap: 8px;
+  }
+  .check-item .label { flex: 1; font-size: 0.92rem; }
+  .check-options { display: flex; gap: 4px; }
+  .check-options button {
+    border: 1px solid #d0d7de;
+    background: #fff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    min-width: 44px;
+    min-height: 38px;
+  }
+  .check-options button.sel-ok { background: #28a745; color: #fff; border-color: #28a745; }
+  .check-options button.sel-nok { background: #dc3545; color: #fff; border-color: #dc3545; }
+  .check-options button.sel-na { background: #6c757d; color: #fff; border-color: #6c757d; }
+
+  /* Photos */
+  .upload-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn-capture {
+    flex: 1;
+    min-width: 140px;
+    padding: 14px;
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .photos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 12px; }
+  .photo-thumb { position: relative; aspect-ratio: 4/3; border-radius: 8px; overflow: hidden; border: 1px solid #ddd; background: #f0f0f0; }
+  .photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .photo-thumb .remove {
+    position: absolute; top: 4px; right: 4px;
+    width: 26px; height: 26px;
+    background: rgba(220,53,69,0.95); color: #fff;
+    border: none; border-radius: 50%;
+    font-size: 14px; cursor: pointer; line-height: 1;
+  }
+  .photo-thumb .label-input {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.55);
+    color: #fff; border: none;
+    padding: 4px 6px;
+    font-size: 0.7rem;
+    text-align: center;
+  }
+  .photo-thumb .label-input::placeholder { color: rgba(255,255,255,0.7); }
+
+  /* Videos */
+  .video-item {
+    background: #fafbfc;
+    border: 1px solid #eef0f2;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .video-item .video-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .video-item input { padding: 10px; }
+  .video-item .label-input { flex: 1; min-width: 140px; }
+  .video-item .link-input { flex: 2; min-width: 200px; }
+  .btn-remove-small {
+    padding: 8px 10px; background: #fff; color: #dc3545;
+    border: 1px solid #dc3545; border-radius: 6px; cursor: pointer;
+    font-size: 0.85rem; font-weight: 600;
+  }
+  .video-help { font-size: 0.78rem; color: #666; margin-top: 4px; }
+  .video-status { font-size: 0.75rem; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 4px; }
+  .video-status.ok { background: #d4edda; color: #155724; }
+  .video-status.empty { background: #f8d7da; color: #721c24; }
+
+  /* Signatures */
+  .sig-block { margin-bottom: 14px; }
+  .sig-canvas {
+    width: 100%;
+    height: 160px;
+    border: 2px dashed #c0c8d1;
+    border-radius: 10px;
+    background: #fff;
+    display: block;
+    touch-action: none;
+  }
+  .sig-canvas.signed { border-style: solid; border-color: #00d4ff; }
+  .sig-actions { display: flex; gap: 8px; margin-top: 6px; }
+  .btn-sig-clear {
+    background: #f0f0f0; color: #333; border: 1px solid #d0d7de;
+    padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+  }
+  .sig-status { font-size: 0.78rem; color: #666; align-self: center; }
+
+  /* Action bar fixed bottom */
+  .action-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: rgba(255,255,255,0.96);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 12px 14px;
+    display: flex; gap: 10px;
+    border-top: 1px solid #e0e4e8;
+    z-index: 100;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .action-bar .btn { flex: 1; max-width: 280px; min-width: 140px; }
+
+  .btn {
+    padding: 14px 18px; border: none; border-radius: 10px;
+    font-size: 0.95rem; font-weight: 700; cursor: pointer;
+    min-height: 50px;
+  }
+  .btn-primary { background: linear-gradient(135deg, #00d4ff, #0099cc); color: #fff; }
+  .btn-secondary { background: #f0f0f0; color: #333; border: 1px solid #d0d7de; }
+  .btn-success { background: linear-gradient(135deg, #28a745, #20c997); color: #fff; }
+  .btn-warning { background: linear-gradient(135deg, #ff9800, #f57c00); color: #fff; }
+  .btn-onedrive { background: linear-gradient(135deg, #0078d4, #005a9e); color: #fff; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .info-box {
+    background: #e3f2fd;
+    border: 1px solid #2196f3;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 0.88rem;
+    color: #1565c0;
+    margin-bottom: 12px;
+  }
+  .info-box.warn { background: #fff3e0; border-color: #ff9800; color: #e65100; }
+  .info-box.success { background: #e8f5e9; border-color: #4caf50; color: #2e7d32; }
+
+  .embalagem-only { display: block; }
+  .embalagem-only.hidden { display: none; }
+
+  /* ===== PWA STYLES ===== */
+  .offline-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #d32f2f;
+    color: #fff;
+    padding: 8px 14px;
+    text-align: center;
+    font-size: 0.85rem;
+    z-index: 2000;
+    transform: translateY(-100%);
+    transition: transform 0.25s;
+    padding-top: calc(8px + env(safe-area-inset-top));
+  }
+  .offline-banner.show { transform: translateY(0); }
+
+  /* Safe area for iPhone notch / Android navigation gesture */
+  body {
+    padding-top: env(safe-area-inset-top, 0);
+    padding-bottom: calc(120px + env(safe-area-inset-bottom, 0));
+  }
+  .offline-banner.show ~ .container {
+    padding-top: 36px;
+  }
+  .action-bar {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0)) !important;
+  }
+
+  /* Standalone mode (PWA installed) — slight visual tweak */
+  @media all and (display-mode: standalone) {
+    body { background: #f0f2f5; }
+  }
+  /* ===== END PWA STYLES ===== */
+
+  /* ===== WIZARD STYLES ===== */
+  .wizard-header { margin-bottom: 14px; }
+  .wizard-progress {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fff;
+    padding: 10px 14px;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    margin-top: 12px;
+    overflow-x: auto;
+    gap: 4px;
+  }
+  .progress-step {
+    flex: 1;
+    text-align: center;
+    font-size: 0.7rem;
+    color: #888;
+    padding: 8px 4px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    min-width: 64px;
+    user-select: none;
+  }
+  .progress-step .num {
+    display: block;
+    width: 26px;
+    height: 26px;
+    line-height: 26px;
+    background: #e0e4e8;
+    color: #666;
+    border-radius: 50%;
+    margin: 0 auto 4px;
+    font-weight: 700;
+    font-size: 0.78rem;
+  }
+  .progress-step.active { color: #00d4ff; font-weight: 700; }
+  .progress-step.active .num { background: #00d4ff; color: #fff; box-shadow: 0 0 0 4px rgba(0,212,255,0.2); }
+  .progress-step.done .num { background: #28a745; color: #fff; }
+  .progress-step.done { color: #28a745; }
+
+  .wizard-step { display: none; }
+  .wizard-step.active { display: block; animation: fadeIn 0.2s ease-in; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .step-card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    margin-bottom: 14px;
+  }
+  .step-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #00d4ff;
+  }
+  .instruction {
+    background: #e3f2fd;
+    border-left: 4px solid #2196f3;
+    padding: 12px 14px;
+    border-radius: 6px;
+    font-size: 0.92rem;
+    color: #1565c0;
+    margin-bottom: 16px;
+    line-height: 1.45;
+  }
+
+  /* Photo blocks per step */
+  .photo-step-block {
+    background: #fafbfc;
+    border: 1px solid #e6eaee;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .photo-step-label {
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 4px;
+    font-size: 0.95rem;
+  }
+  .photo-step-help {
+    font-size: 0.82rem;
+    color: #666;
+    margin-bottom: 10px;
+  }
+
+  /* E2 video blocks (inline within steps) */
+  .e2-video-block {
+    background: #fff3e0;
+    border: 2px solid #ff9800;
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 14px;
+    margin-bottom: 6px;
+  }
+  .e2-video-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+  .e2-badge { background: #ff9800; color: #fff; padding: 3px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.3px; }
+  .e2-fase-num { background: #1a1a2e; color: #fff; padding: 3px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.3px; }
+  .e2-video-title { font-weight: 700; font-size: 1rem; color: #e65100; margin-bottom: 4px; }
+  .e2-video-desc { font-size: 0.85rem; color: #5c4030; margin-bottom: 10px; line-height: 1.4; }
+  .e2-video-block input[type="url"] { padding: 11px; font-size: 0.95rem; margin-top: 8px; background: #fff; }
+  .e2-video-block input[type="text"] { padding: 9px; font-size: 0.9rem; margin-top: 6px; background: #fff; }
+  .e2-video-status { font-size: 0.78rem; padding: 4px 10px; border-radius: 4px; display: inline-block; margin-top: 8px; font-weight: 600; background: #ffebee; color: #c62828; }
+  .e2-video-status.ok { background: #d4edda; color: #155724; }
+
+  /* Wizard action bar */
+  .wizard-actions {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center;
+    padding: 12px 16px !important;
+    gap: 8px;
+  }
+  .wizard-actions .btn { flex: 0 0 auto; max-width: 200px; min-width: 100px; padding: 12px 18px; }
+  .step-indicator {
+    flex: 1;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #666;
+    font-weight: 600;
+  }
+
+  .resumo-box {
+    margin-top: 14px;
+    padding: 14px;
+    background: #f0f7ff;
+    border-radius: 10px;
+    border: 1px solid #00d4ff;
+    font-size: 0.88rem;
+  }
+  .resumo-box h4 { margin: 0 0 8px; color: #1a1a2e; }
+  .resumo-box ul { margin: 4px 0; padding-left: 20px; }
+  .resumo-box li { margin-bottom: 3px; }
+
+  .btn-sm { padding: 8px 12px !important; font-size: 0.82rem !important; min-height: 38px !important; }
+
+  /* hide e2-only by default; show when E2 plan selected */
+  .e2-only { display: none; }
+  .e2-only.show { display: block; }
+  .e2-only-inline { display: none; }
+  .e2-only-inline.show { display: inline; }
+
+  /* nao-e2 elements: visible by default, hidden when E2 plan */
+  .nao-e2 { display: block; }
+  .nao-e2.hidden { display: none; }
+  .nao-e2-inline { display: inline; }
+  .nao-e2-inline.hidden { display: none; }
+
+  .embalagem-only { display: block; }
+  .embalagem-only.hidden { display: none; }
+
+  @media (max-width: 600px) {
+    .progress-step { font-size: 0.62rem; padding: 6px 2px; min-width: 50px; }
+    .progress-step .num { width: 22px; height: 22px; line-height: 22px; font-size: 0.7rem; }
+    .step-title { font-size: 1.02rem; }
+    .wizard-actions .btn { padding: 10px 12px; font-size: 0.85rem; }
+  }
+  /* ===== END WIZARD STYLES ===== */
+
+  /* Novo botão grande de gravar vídeo (E2 simplificado) */
+  .btn-capture-video {
+    width: 100%;
+    padding: 18px;
+    background: linear-gradient(135deg, #ff9800, #e65100);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 10px;
+    box-shadow: 0 2px 8px rgba(230,81,0,0.3);
+  }
+  .btn-capture-video:active { transform: scale(0.98); }
+  .btn-capture-video.regravar {
+    background: linear-gradient(135deg, #28a745, #1e7e34);
+    box-shadow: 0 2px 8px rgba(30,126,52,0.3);
+  }
+  .e2-video-confirm {
+    display: none;
+    margin-top: 10px;
+    padding: 10px 14px;
+    background: #d4edda;
+    color: #155724;
+    border-radius: 8px;
+    font-size: 0.92rem;
+    border-left: 4px solid #28a745;
+  }
+  .rep-video-meta {
+    font-size: 0.82rem;
+    color: #444;
+    margin-top: 4px;
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.6);
+    border-radius: 4px;
+    line-height: 1.4;
+  }
+
+  /* Botão "Buscar Vídeo Recente" (Power Automate) */
+  .btn-buscar {
+    background: linear-gradient(135deg, #5e35b1, #311b92) !important;
+    color: #fff !important;
+    margin-top: 10px;
+    margin-bottom: 6px;
+    padding: 12px 16px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 0.92rem;
+    width: 100%;
+  }
+  .btn-buscar:active { transform: scale(0.98); }
+  .btn-buscar:disabled { opacity: 0.6; cursor: wait; }
+
+  .toast {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #1a1a2e;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    z-index: 3000;
+    transition: transform 0.25s;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    max-width: 90%;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.error { background: #c62828; }
+  .toast.ok { background: #1b5e20; }
+  .toast.info { background: #0277bd; }
+
+
+  /* E2 video phase blocks */
+  .video-fase {
+    background: #fff;
+    border: 2px solid #ff9800;
+    border-left-width: 6px;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .video-fase.complete { border-color: #28a745; background: #f5fff7; }
+  .video-fase-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+  .video-fase-title { font-weight: 700; font-size: 1rem; color: #1a1a2e; }
+  .video-fase-num { display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center; background: #ff9800; color: #fff; border-radius: 50%; font-weight: 700; margin-right: 6px; font-size: 0.85rem; }
+  .video-fase.complete .video-fase-num { background: #28a745; }
+  .video-fase-desc { font-size: 0.82rem; color: #666; margin-bottom: 8px; line-height: 1.4; }
+  .video-fase input[type="url"] { padding: 11px; font-size: 0.95rem; }
+  .video-fase input[type="text"] { padding: 9px; font-size: 0.9rem; margin-top: 6px; }
+  .video-fase-status { font-size: 0.78rem; padding: 4px 10px; border-radius: 4px; display: inline-block; margin-top: 8px; font-weight: 600; }
+  .video-fase-status.ok { background: #d4edda; color: #155724; }
+  .video-fase-status.empty { background: #f8d7da; color: #721c24; }
+
+  /* Top toolbar */
+  .top-bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .top-bar .btn { flex: 1; min-width: 120px; padding: 10px 12px; font-size: 0.85rem; min-height: 44px; }
+
+  .helper-card { background: #f8fafc; border: 1px dashed #c0c8d1; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+  .helper-card h4 { margin: 0 0 6px; font-size: 0.85rem; color: #1a1a2e; }
+  .helper-card ol { margin: 4px 0; padding-left: 20px; font-size: 0.83rem; color: #444; }
+  .helper-card li { margin-bottom: 3px; }
+
+  .progress-tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; margin-left: 6px; }
+  .progress-tag.ok { background: #d4edda; color: #155724; }
+  .progress-tag.todo { background: #fff3cd; color: #856404; }
+
+  .compression-bar { background: #f0f7ff; padding: 8px 12px; border-radius: 8px; font-size: 0.78rem; margin-bottom: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .compression-bar select { padding: 6px 10px; font-size: 0.8rem; flex: 0 0 auto; width: auto; }
+
+  /* Modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; padding: 16px; align-items: flex-start; justify-content: center; overflow-y: auto; }
+  .modal-overlay.active { display: flex; }
+  .modal-card { background: #fff; border-radius: 14px; max-width: 600px; width: 100%; padding: 20px; }
+  .modal-card h3 { margin-top: 0; }
+
+  @media (max-width: 600px) {
+    body { padding: 8px; padding-bottom: 130px; }
+    h1 { font-size: 1.2rem; }
+    .card { padding: 14px; }
+    .check-item { flex-direction: column; align-items: flex-start; }
+    .check-options { width: 100%; justify-content: space-between; }
+    .check-options button { flex: 1; }
+  }
+
+  /* Print clean (used inside generated report only) */
+  @media print {
+    .no-print { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Banner offline -->
+<div id="offlineBanner" class="offline-banner">
+  📡 Sem ligação à internet — pode preencher mas não consegue enviar até ter rede
+</div>
+
+<!-- Toast notifications (Power Automate) -->
+<div id="toast" class="toast"></div>
+
+<div class="container">
+
+  <header class="wizard-header">
+    <h1>📦 Relatório de Embalamento</h1>
+    <p class="subtitle">Embaresa PT — Controlo de Qualidade</p>
+    <div class="wizard-progress" id="wizardProgress"></div>
+  </header>
+
+  <div class="top-bar">
+    <button class="btn btn-secondary btn-sm" onclick="novoRelatorio()">🔄 Novo</button>
+    <button class="btn btn-secondary btn-sm" onclick="guardarRascunho()">💾 Guardar</button>
+    <button class="btn btn-secondary btn-sm" onclick="abrirAjuda()">❓ Ajuda</button>
+    <button class="btn btn-sm" id="btnInstalarPWA" style="background:linear-gradient(135deg,#28a745,#1e7e34);color:#fff;display:none;">📲 Instalar</button>
+  </div>
+
+  <!-- ===== PASSO 1: IDENTIFICAÇÃO ===== -->
+  <div class="wizard-step active" id="step1" data-step="1">
+    <div class="step-card">
+      <div class="step-title">📋 Passo 1 — Identificação da Caixa</div>
+      <div class="instruction">
+        Selecione o plano da caixa, anote a série e o seu nome. A foto do nº de série da caixa é recomendada mas opcional.
+      </div>
+
+      <div class="form-row">
+        <div class="form-group full">
+          <label>Plano Nº</label>
+          <select id="planoNum" onchange="onPlanoChange()">
+            <option value="">— Selecione um plano —</option>
+            <optgroup label="📦 EMBALAGENS">
+              <option value="220310R1">220310R1 — EH LEGACY500</option>
+              <option value="230260R1">230260R1 — CAIXA SOBRAS SEM TAMPA</option>
+              <option value="230265R1">230265R1 — KC390 EV</option>
+              <option value="230266R0">230266R0 — KC390 LOWER DCHA./IZDA.</option>
+              <option value="230267R1">230267R1 — KC390 UPPER DCHA./IZDA.</option>
+              <option value="230269R1">230269R1 — E2 LOWER IZDA.</option>
+              <option value="230312R2">230312R2 — E2 UPPER DCHA.</option>
+              <option value="230324R2">230324R2 — E2 UPPER IZDA.</option>
+              <option value="230325R1">230325R1 — E2 LOWER DCHA.</option>
+              <option value="230391R1">230391R1 — ASA PRAETOR IZDA.</option>
+              <option value="230395R1">230395R1 — ASA PRAETOR DCHA.</option>
+              <option value="230429R1">230429R1 — EV LEGACY 500</option>
+              <option value="230431R1">230431R1 — TAILCONE LEGACY 500</option>
+              <option value="250001R0">250001R0 — KC390 EH S/PL CJTO.</option>
+              <option value="250221R1">250221R1 — JAULA RECORTES 1600</option>
+            </optgroup>
+          </select>
+          <div class="produto-info" id="produtoInfo">
+            <div class="tipo" id="produtoTipo">EMBALAGEM</div>
+            <div class="nome" id="produtoNome"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group full">
+          <label>Cliente</label>
+          <select id="cliente">
+            <option value="ANN Évora Estruturas Metálicas, S.A.">ANN Évora Estruturas Metálicas, S.A.</option>
+            <option value="ANN Évora Estruturas em Compositos, S.A.">ANN Évora Estruturas em Compositos, S.A.</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nº Encomenda <span style="color:#888;font-weight:normal;font-size:0.78rem;">(opcional — preenche depois)</span></label>
+          <input type="text" id="numEncomenda" placeholder="Deixar em branco se não souber">
+        </div>
+        <div class="form-group">
+          <label>Nº Série EM (caixa)</label>
+          <input type="text" id="numSerie" value="EM " placeholder="EM 1663">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Data</label>
+          <input type="date" id="dataEmbalamento">
+        </div>
+        <div class="form-group">
+          <label>Operador Embaresa</label>
+          <select id="operadorEmbaresa">
+            <option value="">— Seleccionar operador —</option>
+            <option value="André Avelino Tavares Rocha">André Avelino Tavares Rocha</option>
+            <option value="David Alexandre Lopes Rocha">David Alexandre Lopes Rocha</option>
+            <option value="Nuno Rafael Pereira Franco">Nuno Rafael Pereira Franco</option>
+            <option value="Pedro Miguel Serranito Familia">Pedro Miguel Serranito Familia</option>
+            <option value="Rui Miguel Charrua Richáu">Rui Miguel Charrua Richáu</option>
+            <option value="Valdir Tavares">Valdir Tavares</option>
+            <option value="William Chaves Inaba">William Chaves Inaba</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Foto SN (recomendada) -->
+      <div class="photo-step-block">
+        <div class="photo-step-label">📸 Foto — Nº de série da caixa <span style="color:#888;font-weight:normal;font-size:0.78rem;">(recomendada)</span></div>
+        <div class="photo-step-help">Tire uma foto onde se veja claramente o nº de série EM da caixa (etiqueta ou marcação).</div>
+        <div class="upload-row">
+          <button class="btn-capture" onclick="capturarFoto('serie')">📷 Tirar Foto</button>
+        </div>
+        <div class="photos-grid" id="photosGrid_serie"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PASSO 2: ESTADO INICIAL ===== -->
+  <div class="wizard-step" id="step2" data-step="2">
+    <div class="step-card">
+      <div class="step-title">🔍 Passo 2 — Estado Inicial do Produto</div>
+      <div class="instruction">
+        <span class="nao-e2-inline">Antes de aplicar qualquer protecção, registe o estado inicial da peça. <strong>Tire pelo menos uma foto</strong> que mostre a peça e a sua identificação (PN/SN).</span>
+        <span class="e2-only-inline">Grave o vídeo da Fase 1 que mostre a peça antes de qualquer acondicionamento, com identificação (PN/SN) visível.</span>
+      </div>
+
+      <div class="photo-step-block nao-e2">
+        <div class="photo-step-label">📸 Foto — Estado inicial da peça</div>
+        <div class="upload-row">
+          <button class="btn-capture" onclick="capturarFoto('inicial')">📷 Tirar Foto</button>
+        </div>
+        <div class="photos-grid" id="photosGrid_inicial"></div>
+      </div>
+
+      <!-- E2 Vídeo Fase 1 -->
+      <div class="e2-video-block e2-only" data-fase="inicio">
+        <div class="e2-video-header">
+          <span class="e2-badge">PROJECTO E2 — Aernnova</span>
+          <span class="e2-fase-num">FASE 1</span>
+        </div>
+        <div class="e2-video-title">🎥 Vídeo — Início do Embalamento</div>
+        <div class="e2-video-desc">Mostre: identificação do material (PN/SN visível) e estado inicial do produto.</div>
+        <button class="btn-capture-video" id="btnGravarInicio" onclick="gravarVideoFase('inicio')">
+          🎬 Gravar Vídeo Fase 1
+        </button>
+        <div class="e2-video-confirm" id="confirmVideoInicio"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PASSO 3: APLICAÇÃO DE PROTECÇÃO ===== -->
+  <div class="wizard-step" id="step3" data-step="3">
+    <div class="step-card">
+      <div class="step-title">🛡️ Passo 3 — Aplicação de Protecção</div>
+      <div class="instruction">
+        Aplique a película protetora, dessecantes e o saco barreira de alumínio. Quando tudo estiver aplicado, <strong>tire foto da protecção visível</strong>.
+      </div>
+
+      <div class="photo-step-block">
+        <div class="photo-step-label">📸 Foto — Protecção aplicada (película + dessecantes + alumínio)</div>
+        <div class="upload-row">
+          <button class="btn-capture" onclick="capturarFoto('protecao')">📷 Tirar Foto</button>
+        </div>
+        <div class="photos-grid" id="photosGrid_protecao"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PASSO 4: POSICIONAMENTO E FIXAÇÃO ===== -->
+  <div class="wizard-step" id="step4" data-step="4">
+    <div class="step-card">
+      <div class="step-title">⚙️ Passo 4 — Posicionamento e Fixação</div>
+      <div class="instruction">
+        <span class="nao-e2-inline">Coloque a peça nos suportes/cunas, feche-os e fixe. <strong>Tire foto da peça posicionada e fixa</strong>.</span>
+        <span class="e2-only-inline">Coloque a peça nos suportes/cunas, feche-os e fixe. Grave o vídeo da Fase 2 que mostre o posicionamento e fixações.</span>
+      </div>
+
+      <div class="photo-step-block nao-e2">
+        <div class="photo-step-label">📸 Foto — Peça posicionada nos suportes</div>
+        <div class="upload-row">
+          <button class="btn-capture" onclick="capturarFoto('posicao')">📷 Tirar Foto</button>
+        </div>
+        <div class="photos-grid" id="photosGrid_posicao"></div>
+      </div>
+
+      <!-- E2 Vídeo Fase 2 -->
+      <div class="e2-video-block e2-only" data-fase="intermedio">
+        <div class="e2-video-header">
+          <span class="e2-badge">PROJECTO E2 — Aernnova</span>
+          <span class="e2-fase-num">FASE 2</span>
+        </div>
+        <div class="e2-video-title">🎥 Vídeo — Fase Intermédia</div>
+        <div class="e2-video-desc">Mostre: protecção aplicada, posicionamento, fixações.</div>
+        <button class="btn-capture-video" id="btnGravarIntermedio" onclick="gravarVideoFase('intermedio')">
+          🎬 Gravar Vídeo Fase 2
+        </button>
+        <div class="e2-video-confirm" id="confirmVideoIntermedio"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PASSO 5: EMBALAGEM FINAL ===== -->
+  <div class="wizard-step" id="step5" data-step="5">
+    <div class="step-card">
+      <div class="step-title">📦 Passo 5 — Embalagem Final</div>
+      <div class="instruction">
+        Baixe a lona, aplique abraçadeiras/cintas, cole etiquetas. <span class="nao-e2-inline"><strong>Tire foto da embalagem completa</strong> e <strong>foto da etiqueta exterior</strong> bem visível.</span><span class="e2-only-inline">Grave o vídeo final que mostre a embalagem completa, com etiqueta exterior bem visível.</span>
+      </div>
+
+      <div class="photo-step-block nao-e2">
+        <div class="photo-step-label">📸 Foto — Embalagem completa (vista geral)</div>
+        <div class="upload-row">
+          <button class="btn-capture" onclick="capturarFoto('finalGeral')">📷 Tirar Foto</button>
+        </div>
+        <div class="photos-grid" id="photosGrid_finalGeral"></div>
+      </div>
+
+      <div class="photo-step-block nao-e2">
+        <div class="photo-step-label">📸 Foto — Etiqueta exterior identificação</div>
+        <div class="upload-row">
+          <button class="btn-capture" onclick="capturarFoto('finalEtiqueta')">📷 Tirar Foto</button>
+        </div>
+        <div class="photos-grid" id="photosGrid_finalEtiqueta"></div>
+      </div>
+
+      <!-- E2 Vídeo Fase 3 -->
+      <div class="e2-video-block e2-only" data-fase="final">
+        <div class="e2-video-header">
+          <span class="e2-badge">PROJECTO E2 — Aernnova</span>
+          <span class="e2-fase-num">FASE 3</span>
+        </div>
+        <div class="e2-video-title">🎥 Vídeo — Conclusão do Embalamento</div>
+        <div class="e2-video-desc">Mostre: embalagem finalizada, identificação exterior, condição final.</div>
+        <button class="btn-capture-video" id="btnGravarFinal" onclick="gravarVideoFase('final')">
+          🎬 Gravar Vídeo Fase 3
+        </button>
+        <div class="e2-video-confirm" id="confirmVideoFinal"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PASSO 6: CHECKLIST + OBSERVAÇÕES ===== -->
+  <div class="wizard-step" id="step6" data-step="6">
+    <div class="step-card">
+      <div class="step-title">✅ Passo 6 — Checklist e Observações</div>
+      <div class="instruction">
+        Verifique cada item da lista. Marque <strong>OK</strong> se conforme, <strong>NOK</strong> se não conforme, <strong>NA</strong> se não aplicável.
+      </div>
+      <div id="checklistContainer"></div>
+
+      <div class="form-group full" style="margin-top:18px;">
+        <label>Observações <span style="color:#888;font-weight:normal;font-size:0.78rem;">(opcional)</span></label>
+        <textarea id="observacoes" placeholder="Notas adicionais (não conformidades, eventos, etc.)..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Campos de dimensões escondidos — preenchidos automaticamente pelo plano -->
+  <div style="display:none;">
+    <input type="number" id="comprimento">
+    <input type="number" id="largura">
+    <input type="number" id="altura">
+  </div>
+
+  <!-- ===== PASSO 7 (era 8): ASSINATURAS ===== -->
+  <div class="wizard-step" id="step7" data-step="7">
+    <div class="step-card">
+      <div class="step-title">✍️ Passo 7 — Assinaturas</div>
+      <div class="instruction">
+        Assine no canvas. Em seguida, peça ao colaborador da Aernnova para assinar no segundo canvas.
+      </div>
+
+      <div class="sig-block">
+        <div class="form-group">
+          <label>Operador Embaresa PT</label>
+          <div id="operadorEmbaresaSigDisplay" style="padding:12px;background:#f0f7ff;border-radius:8px;font-weight:600;color:#1a1a2e;">— Voltar ao Passo 1 e seleccionar —</div>
+        </div>
+        <canvas id="sigEmbaresa" class="sig-canvas"></canvas>
+        <div class="sig-actions">
+          <button class="btn-sig-clear" onclick="limparAssinatura('sigEmbaresa')">Limpar</button>
+          <span class="sig-status" id="statusSigEmbaresa">Por assinar</span>
+        </div>
+      </div>
+
+      <div class="sig-block">
+        <div class="form-group">
+          <label>Colaborador Aernnova</label>
+          <input type="text" id="operadorCliente" placeholder="Nome do colaborador Aernnova">
+        </div>
+        <canvas id="sigCliente" class="sig-canvas"></canvas>
+        <div class="sig-actions">
+          <button class="btn-sig-clear" onclick="limparAssinatura('sigCliente')">Limpar</button>
+          <span class="sig-status" id="statusSigCliente">Por assinar</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PASSO 9: ENVIO ===== -->
+  <div class="wizard-step" id="step8" data-step="8">
+    <div class="step-card">
+      <div class="step-title">📤 Passo 8 — Envio do Relatório</div>
+      <div class="instruction">
+        O relatório vai automaticamente para a <strong>responsável de QC da Embaresa</strong>, que valida e reencaminha à Aernnova. Pode editar o destinatário se necessário.
+      </div>
+
+      <div class="form-row">
+        <div class="form-group full">
+          <label>Destinatário (Embaresa QC)</label>
+          <input type="email" id="emailCliente" value="ssantos@embaresa.com">
+        </div>
+      </div>
+
+      <input type="hidden" id="emailCC" value="">
+
+      <div class="info-box">
+        💡 Ao clicar <strong>Enviar Relatório</strong>, o telemóvel abre uma janela de partilha. Escolha "Outlook" ou "Mail" — o ficheiro vai automaticamente anexado.
+      </div>
+
+      <div class="info-box warn" style="margin-top:10px;">
+        📹 <strong>Sobre os vídeos E2:</strong> os vídeos não vão dentro do email (são pesados). O HTML do relatório contém apenas <strong>links</strong> que abrem os vídeos directamente no OneDrive. Confirme que carregou os vídeos para a pasta partilhada da Embaresa antes de enviar.
+      </div>
+
+      <div id="resumoFinal" class="resumo-box"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Action Bar -->
+<div class="action-bar wizard-actions">
+  <button class="btn btn-secondary" id="btnVoltar" onclick="prevStep()">← Voltar</button>
+  <span class="step-indicator" id="stepIndicator">Passo 1 de 9</span>
+  <button class="btn btn-primary" id="btnAvancar" onclick="nextStep()">Avançar →</button>
+  <button class="btn btn-success" id="btnEnviar" onclick="enviarRelatorio()" style="display:none;">📤 Enviar Relatório</button>
+</div>
+
+<!-- Modal Pré-visualização -->
+<div class="modal-overlay" id="modalPreview">
+  <div class="modal-card" style="max-width:900px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0;">👁️ Pré-visualização</h3>
+      <button class="btn-sig-clear" onclick="fecharModal('modalPreview')">Fechar</button>
+    </div>
+    <div id="previewContent" style="max-height:65vh; overflow-y:auto; border:1px solid #eee; border-radius:8px; padding:8px;"></div>
+    <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+      <button class="btn btn-secondary" onclick="fecharModal('modalPreview')">Fechar</button>
+      <button class="btn btn-success" onclick="fecharModal('modalPreview'); enviarRelatorio()">📤 Enviar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Ajuda -->
+<div class="modal-overlay" id="modalAjuda">
+  <div class="modal-card">
+    <h3>❓ Como usar</h3>
+    <p style="font-size:0.9rem; line-height:1.5;">
+      A app guia-o passo a passo. Em cada passo, faça apenas o que é pedido (foto, vídeo, checklist...) e clique <strong>Avançar</strong>. Se precisar de corrigir algo, use <strong>Voltar</strong>.
+    </p>
+    <div style="background:#fff3e0; border:1px solid #ff9800; border-radius:8px; padding:10px 12px; margin-top:12px;">
+      <strong style="color:#e65100;">📹 Projecto E2 — Aernnova</strong>
+      <p style="font-size:0.85rem; margin:6px 0 0; line-height:1.4;">
+        Para os 4 planos E2 aparecem automaticamente blocos de vídeo nas fases 1, 2 e 3 (Passos 2, 4 e 5). Grave os vídeos com o tablet/telemóvel, faça upload ao OneDrive da Embaresa e cole os links.
+      </p>
+    </div>
+    <p style="font-size:0.85rem; color:#666; margin-top:12px;">
+      <strong>Dica:</strong> use <em>Guardar</em> regularmente. Se a app fechar, os dados de formulário recuperam-se (fotos e assinaturas têm de ser refeitas).
+    </p>
+    <button class="btn btn-primary" onclick="fecharModal('modalAjuda')" style="width:100%; margin-top:12px;">Entendido</button>
+  </div>
+</div>
+
+<script>
+// ============================================
+// ⚙️ CONFIGURAÇÃO — EDITAR AQUI SE NECESSÁRIO
+// ============================================
+const CONFIG = {
+  // Email para onde os relatórios são enviados (Sónia, que depois reencaminha à Aernnova)
+  emailDestino: 'ssantos@embaresa.com',
+
+  // Endpoint HTTP do fluxo Power Automate "Embalamento_GetLatestVideo"
+  // Se vazio, a app funciona em modo manual (operador cola link à mão)
+  // Se configurado, aparece botão "🔄 Buscar Vídeo Recente" nos campos E2
+  powerAutomateEndpoint: '',  // Ex: 'https://prod-XX.westeurope.logic.azure.com:443/workflows/...'
+
+  // Versão da app (incrementar quando publicar nova versão)
+  versao: '1.4.0'
+};
+// ============================================
+
+// ============================================
+// BASE DE DADOS DE PLANOS E CLIENTES
+// ============================================
+const PLANOS_DB = {
+  "220310R1": { nome: "EMBALAGEM EH do LEGACY500_Sin cajas carton", tipo: "EMBALAGEM", dimensoes: "7500x2250x1950" },
+  "230220R0": { nome: "FRAÇÃO E2 _22", tipo: "FRACAO", dimensoes: "2200x800x1012" },
+  "230221R1": { nome: "FRAÇÃO E2 _12", tipo: "FRACAO", dimensoes: "3750x1245x912" },
+  "230222R0": { nome: "FRAÇÃO E2 _11", tipo: "FRACAO", dimensoes: "10900x870x507" },
+  "230223R0": { nome: "FRAÇÃO E1_F Long", tipo: "FRACAO", dimensoes: "11800x700x1040" },
+  "230224R0": { nome: "FRAÇÃO E1_G", tipo: "FRACAO", dimensoes: "11800x1100x1190" },
+  "230260R1": { nome: "CAIXA SOBRAS SEM TAMPA_OP. REFORZADA", tipo: "EMBALAGEM", dimensoes: "" },
+  "230265R1": { nome: "EMBALAGEM KC390 - EV", tipo: "EMBALAGEM", dimensoes: "9100x2300x3645" },
+  "230266R0": { nome: "EMBALAGEM KC390 LOWER DCHA./IZDA.", tipo: "EMBALAGEM", dimensoes: "19223x2324x3600" },
+  "230267R1": { nome: "EMBALAGEM KC390 UPPER DCHA./IZDA.", tipo: "EMBALAGEM", dimensoes: "19223x2324x3600" },
+  "230269R1": { nome: "EMBALAGEM E2 LOWER IZDA.", tipo: "EMBALAGEM", dimensoes: "16876x2306x2182" },
+  "230312R2": { nome: "EMBALAGEM E2 UPPER DCHA.", tipo: "EMBALAGEM", dimensoes: "16876x2288x2182" },
+  "230324R2": { nome: "EMBALAGEM E2 UPPER IZDA.", tipo: "EMBALAGEM", dimensoes: "16876x2288x2182" },
+  "230325R1": { nome: "EMBALAGEM E2 LOWER DCHA.", tipo: "EMBALAGEM", dimensoes: "16876x2306x2182" },
+  "230385R0": { nome: "FRAÇÃO E2 _CAJA 1 4M", tipo: "FRACAO", dimensoes: "1867x4000x1150" },
+  "230386R1": { nome: "FRAÇÃO E2 _2", tipo: "FRACAO", dimensoes: "8000x900x505" },
+  "230387R0": { nome: "FRAÇÃO E2 _8", tipo: "FRACAO", dimensoes: "5500x505x400" },
+  "230388R0": { nome: "FRAÇÃO E2 _9", tipo: "FRACAO", dimensoes: "6000x505x400" },
+  "230389R0": { nome: "FRAÇÃO E2 _10", tipo: "FRACAO", dimensoes: "7100x505x600" },
+  "230391R1": { nome: "EMBALAGEM ASA PRAETOR AEREA REV.1-IZDA_S/PL", tipo: "EMBALAGEM", dimensoes: "11095x2980x2350" },
+  "230395R1": { nome: "EMBALAGEM ASA PRAETOR AEREA REV.1-DCHA_S/PL", tipo: "EMBALAGEM", dimensoes: "11095x2980x2350" },
+  "230429R1": { nome: "EMBALAGEM EV LEGACY 500_Sin cajas cartón", tipo: "EMBALAGEM", dimensoes: "4630x1430x2170" },
+  "230431R1": { nome: "EMBALAGEM TAILCONE LEGACY 500_Base con cunas+campana", tipo: "EMBALAGEM", dimensoes: "2720x1320x1600" },
+  "240040R0": { nome: "FRAÇÃO E2 _7", tipo: "FRACAO", dimensoes: "4000x1755x712" },
+  "240238R0": { nome: "FRAÇÃO KC390_2", tipo: "FRACAO", dimensoes: "16550x1250x712" },
+  "240239R1": { nome: "FRAÇÃO KC390_4", tipo: "FRACAO", dimensoes: "15000x1250x785" },
+  "240240R0": { nome: "FRAÇÃO KC390_6", tipo: "FRACAO", dimensoes: "5564x1565x1754" },
+  "240241R0": { nome: "FRAÇÃO KC390_13", tipo: "FRACAO", dimensoes: "2970x1000x1400" },
+  "240248R0": { nome: "FRAÇÃO KC390_WING TIP", tipo: "FRACAO", dimensoes: "1740x1010x500" },
+  "240249R0": { nome: "FRAÇÃO E1_NMF", tipo: "FRACAO", dimensoes: "12560x1910x1770" },
+  "250001R0": { nome: "EMBALAGEM KC390 EH S/PL CJTO.", tipo: "EMBALAGEM", dimensoes: "11943x3148x3875" },
+  "250027R0": { nome: "FRAÇÃO E1_A", tipo: "FRACAO", dimensoes: "3394x1340x567" },
+  "250221R1": { nome: "JAULA RECORTES 1600 S/PL", tipo: "EMBALAGEM", dimensoes: "" }
+};
+
+const CLIENTES_DB = {
+  "ANN Évora Estruturas Metálicas, S.A.": { vat: "PT508622727" },
+  "ANN Évora Estruturas em Compositos, S.A.": { vat: "PT508622732" }
+};
+
+const CHECKLIST_TEMPLATE = [
+  { section: "Bastidor Metálico", items: ["Soldadura", "Fixação a estrutura de madeira", "Pintura", "Argolas de elevação"] },
+  { section: "Estrutura de Madeira", items: ["Estado da madeira", "Marcação ISPM15", "Fixação parafusos"] },
+  { section: "Suportes e Cunas", items: ["Posicionamento correto", "Estado das borrachas/espumas", "Fixação dos suportes"] },
+  { section: "Proteção e Embalamento", items: ["Película protetora", "Dessecantes colocados", "Saco barreira alumínio", "Lona exterior", "Abraçadeiras/Cintas", "Etiquetas identificação"] }
+];
+
+// Planos do Projecto E2 — requisito Aernnova de registo vídeo das 3 fases
+const E2_PLANOS = ["230269R1", "230312R2", "230324R2", "230325R1"];
+const E2_PLANO_LABELS = {
+  "230269R1": "E2 LOWER ESQUERDO",
+  "230312R2": "E2 UPPER DIREITO",
+  "230324R2": "E2 UPPER ESQUERDO",
+  "230325R1": "E2 LOWER DIREITO"
+};
+const E2_FASES = [
+  { id: "inicio", num: 1, titulo: "Início do Embalamento", desc: "Identificação do material (PN/SN), estado inicial do produto antes de qualquer acondicionamento." },
+  { id: "intermedio", num: 2, titulo: "Fase Intermédia", desc: "Evidência da protecção aplicada, posicionamento, acondicionamento e elementos de fixação ou separação." },
+  { id: "final", num: 3, titulo: "Conclusão do Embalamento", desc: "Embalagem finalizada, identificação exterior, condição final antes de expedição." }
+];
+
+// ============================================
+// ESTADO GLOBAL
+// ============================================
+const state = {
+  fotos: [], // {id, dataUrl, label, step} — step: 'serie'|'inicial'|'protecao'|'posicao'|'finalGeral'|'finalEtiqueta'
+  videos: [], // (mantido para compatibilidade — não usado no wizard)
+  videosE2: {
+    inicio: { gravado: false, nomeFicheiro: '', tamanhoMB: 0, dataHora: '', dataHoraFmt: '', link: '', notas: '' },
+    intermedio: { gravado: false, nomeFicheiro: '', tamanhoMB: 0, dataHora: '', dataHoraFmt: '', link: '', notas: '' },
+    final: { gravado: false, nomeFicheiro: '', tamanhoMB: 0, dataHora: '', dataHoraFmt: '', link: '', notas: '' }
+  },
+  checklist: {},
+  signatures: {},
+  currentStep: 1
+};
+
+const TOTAL_STEPS = 8;
+const STEP_LABELS = ['Identificação', 'Estado Inicial', 'Protecção', 'Posicionamento', 'Embalagem Final', 'Checklist', 'Assinaturas', 'Envio'];
+const PHOTO_STEPS = {
+  serie: { label: 'Nº Série da caixa', step: 1, required: 1 },
+  inicial: { label: 'Estado Inicial do Produto', step: 2, required: 1 },
+  protecao: { label: 'Protecção Aplicada', step: 3, required: 1 },
+  posicao: { label: 'Posicionamento e Fixação', step: 4, required: 1 },
+  finalGeral: { label: 'Embalagem Completa', step: 5, required: 1 },
+  finalEtiqueta: { label: 'Etiqueta Exterior', step: 5, required: 1 }
+};
+
+let nextPhotoId = 1;
+let nextVideoId = 1;
+
+// ============================================
+// INICIALIZAÇÃO
+// ============================================
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('dataEmbalamento').valueAsDate = new Date();
+  // Pré-preencher email destino a partir do CONFIG
+  const emailEl = document.getElementById('emailCliente');
+  if (emailEl && CONFIG.emailDestino) emailEl.value = CONFIG.emailDestino;
+
+  renderChecklist();
+  setupSignaturePads();
+  carregarRascunho();
+  renderProgressBar();
+  showStep(state.currentStep);
+
+  // Atualizar display do operador no Passo 7 (Assinaturas) sempre que mudar no Passo 1
+  const opEmb = document.getElementById('operadorEmbaresa');
+  const opEmbDisplay = document.getElementById('operadorEmbaresaSigDisplay');
+  if (opEmb && opEmbDisplay) {
+    opEmb.addEventListener('change', () => {
+      opEmbDisplay.textContent = opEmb.value || '— Voltar ao Passo 1 e seleccionar —';
+    });
+  }
+
+  // Inicializar funcionalidades PWA
+  registarServiceWorker();
+  monitorizarRede();
+  configurarBotaoInstalar();
+  configurarBuscarVideos();
+});
+
+// ============================================
+// PWA — SERVICE WORKER, OFFLINE, INSTALL
+// ============================================
+function registarServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js')
+        .then(reg => {
+          console.log('[PWA] Service Worker registado:', reg.scope);
+          // Verificar updates a cada vez que a app abre
+          reg.update();
+        })
+        .catch(err => console.warn('[PWA] Falha ao registar SW:', err));
+    });
+  }
+}
+
+function monitorizarRede() {
+  const banner = document.getElementById('offlineBanner');
+  function atualizar() {
+    if (!banner) return;
+    if (navigator.onLine) {
+      banner.classList.remove('show');
+    } else {
+      banner.classList.add('show');
+    }
+  }
+  window.addEventListener('online', atualizar);
+  window.addEventListener('offline', atualizar);
+  atualizar();
+}
+
+let deferredInstallPrompt = null;
+function configurarBotaoInstalar() {
+  const btn = document.getElementById('btnInstalarPWA');
+  if (!btn) return;
+
+  // Se já está instalada (modo standalone), esconder o botão
+  if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+    btn.style.display = 'none';
+    return;
+  }
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    btn.style.display = 'inline-block';
+  });
+
+  btn.addEventListener('click', async () => {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      const { outcome } = await deferredInstallPrompt.userChoice;
+      if (outcome === 'accepted') btn.style.display = 'none';
+      deferredInstallPrompt = null;
+    } else {
+      // iOS Safari não tem beforeinstallprompt — mostrar instruções
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      if (isIOS) {
+        alert('Para instalar no iPhone:\n\n1. Toque em Partilhar (📤) na barra inferior\n2. Toque em "Adicionar ao Ecrã Principal"\n3. Toque em Adicionar\n\nA app vai aparecer no ecrã principal como uma aplicação normal.');
+      } else {
+        alert('Para instalar no Android:\n\n1. Toque no menu (⋮) do Chrome\n2. Toque em "Adicionar ao ecrã principal" ou "Instalar app"');
+      }
+    }
+  });
+}
+
+// ============================================
+// WIZARD NAVIGATION
+// ============================================
+function renderProgressBar() {
+  const bar = document.getElementById('wizardProgress');
+  if (!bar) return;
+  bar.innerHTML = STEP_LABELS.map((label, i) => {
+    const num = i + 1;
+    const isActive = num === state.currentStep;
+    const isDone = num < state.currentStep;
+    return `<div class="progress-step ${isActive ? 'active' : ''} ${isDone ? 'done' : ''}" onclick="goToStep(${num})">
+      <span class="num">${isDone ? '✓' : num}</span>
+      <span class="lbl">${label}</span>
+    </div>`;
+  }).join('');
+}
+
+function showStep(n) {
+  if (n < 1 || n > TOTAL_STEPS) return;
+  document.querySelectorAll('.wizard-step').forEach(el => el.classList.remove('active'));
+  const target = document.getElementById('step' + n);
+  if (target) target.classList.add('active');
+  state.currentStep = n;
+  renderProgressBar();
+  // Atualizar action bar
+  const btnVoltar = document.getElementById('btnVoltar');
+  const btnAvancar = document.getElementById('btnAvancar');
+  const btnEnviar = document.getElementById('btnEnviar');
+  const indicator = document.getElementById('stepIndicator');
+  btnVoltar.disabled = (n === 1);
+  if (n === TOTAL_STEPS) {
+    btnAvancar.style.display = 'none';
+    btnEnviar.style.display = 'inline-block';
+    atualizarResumoFinal();
+  } else {
+    btnAvancar.style.display = 'inline-block';
+    btnEnviar.style.display = 'none';
+  }
+  indicator.textContent = `Passo ${n} de ${TOTAL_STEPS} — ${STEP_LABELS[n-1]}`;
+
+  // Quando entra no Passo 7 (Assinaturas), mostrar o nome do operador
+  if (n === 7) {
+    const display = document.getElementById('operadorEmbaresaSigDisplay');
+    const opVal = document.getElementById('operadorEmbaresa').value;
+    if (display) display.textContent = opVal || '— Voltar ao Passo 1 e seleccionar —';
+  }
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function nextStep() {
+  if (!validarPasso(state.currentStep)) return;
+  if (state.currentStep < TOTAL_STEPS) showStep(state.currentStep + 1);
+}
+
+function prevStep() {
+  if (state.currentStep > 1) showStep(state.currentStep - 1);
+}
+
+function goToStep(n) {
+  // Permitir saltar para passos já visitados ou o seguinte
+  if (n <= state.currentStep + 1) showStep(n);
+}
+
+function validarPasso(n) {
+  const d = getDados();
+  const erros = [];
+
+  switch (n) {
+    case 1:
+      if (!d.planoNum) erros.push('Selecione um plano.');
+      if (d.numSerie === '—' || d.numSerie.trim() === 'EM' || d.numSerie.trim() === '') erros.push('Indique o nº de série da caixa (ex: EM 1663).');
+      if (!d.operadorEmbaresa || d.operadorEmbaresa === '—') erros.push('Indique o nome do operador.');
+      // Foto SN é recomendada mas não obrigatória
+      break;
+    case 2:
+      if (!d.isE2 && countFotos('inicial') < 1) erros.push('Tire pelo menos 1 foto do estado inicial.');
+      if (d.isE2 && !state.videosE2.inicio.gravado) erros.push('Grave o vídeo da Fase 1 (Início).');
+      break;
+    case 3:
+      if (countFotos('protecao') < 1) erros.push('Tire pelo menos 1 foto da protecção aplicada.');
+      break;
+    case 4:
+      if (!d.isE2 && countFotos('posicao') < 1) erros.push('Tire pelo menos 1 foto do posicionamento.');
+      if (d.isE2 && !state.videosE2.intermedio.gravado) erros.push('Grave o vídeo da Fase 2 (Intermédia).');
+      break;
+    case 5:
+      if (!d.isE2 && countFotos('finalGeral') < 1) erros.push('Tire pelo menos 1 foto da embalagem completa.');
+      if (!d.isE2 && countFotos('finalEtiqueta') < 1) erros.push('Tire pelo menos 1 foto da etiqueta exterior.');
+      if (d.isE2 && !state.videosE2.final.gravado) erros.push('Grave o vídeo da Fase 3 (Conclusão).');
+      break;
+    case 6:
+      // Checklist obrigatório (já não há fracções no dropdown)
+      const total = CHECKLIST_TEMPLATE.reduce((s, g) => s + g.items.length, 0);
+      const done = Object.keys(state.checklist).length;
+      if (done < total) erros.push(`Preencha todos os ${total} itens do checklist (faltam ${total - done}).`);
+      break;
+    case 7:
+      if (!state.signatures.embaresa) erros.push('Recolha a assinatura do operador Embaresa.');
+      if (!state.signatures.cliente) erros.push('Recolha a assinatura do colaborador Aernnova.');
+      if (!d.operadorCliente || d.operadorCliente === '—') erros.push('Indique o nome do colaborador Aernnova.');
+      break;
+  }
+
+  if (erros.length > 0) {
+    alert('⚠️ Antes de avançar:\n\n• ' + erros.join('\n• '));
+    return false;
+  }
+  return true;
+}
+
+function countFotos(step) {
+  return state.fotos.filter(f => f.step === step).length;
+}
+
+function atualizarResumoFinal() {
+  const d = getDados();
+  const box = document.getElementById('resumoFinal');
+  if (!box) return;
+  const totalFotos = state.fotos.length;
+  const fasesE2 = E2_FASES.filter(f => state.videosE2[f.id].gravado).length;
+  box.innerHTML = `
+    <h4>📋 Resumo do Relatório</h4>
+    <ul>
+      <li><strong>Plano:</strong> ${escapeHtml(d.planoNum)} — ${escapeHtml(d.planoNome)}</li>
+      <li><strong>Cliente:</strong> ${escapeHtml(d.cliente)}</li>
+      <li><strong>Encomenda:</strong> ${escapeHtml(d.numEncomenda)} • <strong>Série:</strong> ${escapeHtml(d.numSerie)}</li>
+      <li><strong>Data:</strong> ${d.dataFormatada} • <strong>Operador:</strong> ${escapeHtml(d.operadorEmbaresa)}</li>
+      <li><strong>Fotos:</strong> ${totalFotos} no total</li>
+      ${d.isE2 ? `<li><strong>Vídeos E2:</strong> ${fasesE2}/3 fases registadas</li>` : ''}
+      <li><strong>Assinaturas:</strong> ${state.signatures.embaresa ? '✓' : '✗'} Embaresa • ${state.signatures.cliente ? '✓' : '✗'} Aernnova</li>
+    </ul>`;
+}
+
+// ============================================
+// PLANO E AUTO-FILL
+// ============================================
+function onPlanoChange() {
+  const codigo = document.getElementById('planoNum').value;
+  const infoDiv = document.getElementById('produtoInfo');
+  const tipoSpan = document.getElementById('produtoTipo');
+  const nomeSpan = document.getElementById('produtoNome');
+
+  if (codigo && PLANOS_DB[codigo]) {
+    const plano = PLANOS_DB[codigo];
+    tipoSpan.textContent = plano.tipo === 'EMBALAGEM' ? '📦 EMBALAGEM' : '📄 FRAÇÃO';
+    nomeSpan.textContent = plano.nome;
+    infoDiv.classList.add('visible');
+    infoDiv.classList.toggle('fracao', plano.tipo === 'FRACAO');
+
+    if (plano.dimensoes) {
+      const dims = plano.dimensoes.split('x');
+      if (dims.length === 3) {
+        document.getElementById('comprimento').value = dims[0].trim();
+        document.getElementById('largura').value = dims[1].trim();
+        document.getElementById('altura').value = dims[2].trim();
+      }
+    }
+
+    // Esconder secções específicas de embalagem se for fração
+    document.querySelectorAll('.embalagem-only').forEach(el => {
+      el.classList.toggle('hidden', plano.tipo === 'FRACAO');
+    });
+
+    // Lógica E2 — mostrar bloco vídeo obrigatório se for um dos 4 planos E2
+    const isE2 = E2_PLANOS.includes(codigo);
+    document.querySelectorAll('.e2-only').forEach(el => el.classList.toggle('show', isE2));
+    document.querySelectorAll('.e2-only-inline').forEach(el => el.classList.toggle('show', isE2));
+    document.querySelectorAll('.nao-e2').forEach(el => el.classList.toggle('hidden', isE2));
+    document.querySelectorAll('.nao-e2-inline').forEach(el => el.classList.toggle('hidden', isE2));
+    if (isE2) renderVideosE2();
+  } else {
+    infoDiv.classList.remove('visible');
+    document.querySelectorAll('.embalagem-only').forEach(el => el.classList.remove('hidden'));
+    document.querySelectorAll('.e2-only').forEach(el => el.classList.remove('show'));
+    document.querySelectorAll('.e2-only-inline').forEach(el => el.classList.remove('show'));
+    document.querySelectorAll('.nao-e2').forEach(el => el.classList.remove('hidden'));
+    document.querySelectorAll('.nao-e2-inline').forEach(el => el.classList.remove('hidden'));
+  }
+}
+
+// ============================================
+// CHECKLIST
+// ============================================
+function renderChecklist() {
+  const container = document.getElementById('checklistContainer');
+  let html = '';
+  CHECKLIST_TEMPLATE.forEach(group => {
+    html += `<div class="checklist-section"><h3>${group.section}</h3>`;
+    group.items.forEach(item => {
+      const key = `${group.section}::${item}`;
+      html += `
+        <div class="check-item" data-key="${key}">
+          <span class="label">${item}</span>
+          <div class="check-options">
+            <button onclick="setCheck('${key}', 'ok', this)">OK</button>
+            <button onclick="setCheck('${key}', 'nok', this)">NOK</button>
+            <button onclick="setCheck('${key}', 'na', this)">NA</button>
+          </div>
+        </div>`;
+    });
+    html += `</div>`;
+  });
+  container.innerHTML = html;
+}
+
+function setCheck(key, value, btn) {
+  state.checklist[key] = value;
+  const parent = btn.parentElement;
+  parent.querySelectorAll('button').forEach(b => b.classList.remove('sel-ok', 'sel-nok', 'sel-na'));
+  btn.classList.add('sel-' + value);
+  atualizarTags();
+}
+
+function atualizarTags() {
+  // No wizard, o progresso é mostrado na barra superior — esta função é mantida como no-op
+  // para compatibilidade com chamadas existentes. Pode ser removida em versões futuras.
+}
+
+// ============================================
+// FOTOS COM COMPRESSÃO
+// ============================================
+// Captura uma foto para um passo específico
+function capturarFoto(stepKey) {
+  // Criar input dinâmico para cada chamada
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.capture = 'environment';
+  input.onchange = (e) => onPhotoSelected(e, stepKey);
+  input.click();
+}
+
+async function onPhotoSelected(event, stepKey) {
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
+
+  // Compressão fixa de boa qualidade (sem UI de configuração no wizard)
+  const quality = 0.7;
+  const maxSize = 1600;
+
+  for (const file of files) {
+    try {
+      const dataUrl = await comprimirImagem(file, maxSize, quality);
+      state.fotos.push({ id: nextPhotoId++, dataUrl, label: '', step: stepKey });
+    } catch (e) {
+      console.error('Erro ao processar foto:', e);
+    }
+  }
+  if (event.target) event.target.value = '';
+  renderFotosStep(stepKey);
+}
+
+function comprimirImagem(file, maxSize, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (Math.max(w, h) > maxSize) {
+        if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+        else { w = Math.round(w * maxSize / h); h = maxSize; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+// Renderiza as fotos de um passo específico
+function renderFotosStep(stepKey) {
+  const grid = document.getElementById('photosGrid_' + stepKey);
+  if (!grid) return;
+  const fotos = state.fotos.filter(f => f.step === stepKey);
+  grid.innerHTML = fotos.map(f => `
+    <div class="photo-thumb">
+      <img src="${f.dataUrl}" alt="">
+      <button class="remove" onclick="removerFoto(${f.id})">×</button>
+      <input class="label-input" type="text" placeholder="legenda..." value="${escapeAttr(f.label)}" onchange="atualizarLegendaFoto(${f.id}, this.value)">
+    </div>
+  `).join('');
+}
+
+function renderTodasFotos() {
+  // Re-render todos os grids (usar quando recarregar rascunho)
+  Object.keys(PHOTO_STEPS).forEach(k => renderFotosStep(k));
+}
+
+function removerFoto(id) {
+  const f = state.fotos.find(x => x.id === id);
+  state.fotos = state.fotos.filter(x => x.id !== id);
+  if (f) renderFotosStep(f.step);
+}
+
+function atualizarLegendaFoto(id, label) {
+  const f = state.fotos.find(x => x.id === id);
+  if (f) f.label = label;
+}
+
+// ============================================
+// VÍDEOS
+// ============================================
+function adicionarVideo() {
+  state.videos.push({ id: nextVideoId++, label: '', link: '' });
+  renderVideos();
+  atualizarTags();
+}
+
+function removerVideo(id) {
+  state.videos = state.videos.filter(v => v.id !== id);
+  renderVideos();
+  atualizarTags();
+}
+
+function atualizarVideo(id, campo, valor) {
+  const v = state.videos.find(x => x.id === id);
+  if (v) v[campo] = valor;
+  atualizarTags();
+}
+
+function renderVideos() {
+  // Função do v2 — não usada no wizard. Mantida vazia para compatibilidade.
+  const container = document.getElementById('videosContainer');
+  if (!container) return;
+  container.innerHTML = state.videos.map(v => {
+    const temLink = v.link && v.link.trim();
+    return `
+    <div class="video-item">
+      <div class="video-row">
+        <input class="label-input" type="text" placeholder="Descrição (ex: vista lateral)" value="${escapeAttr(v.label)}" onchange="atualizarVideo(${v.id}, 'label', this.value)">
+        <button class="btn-remove-small" onclick="removerVideo(${v.id})">Remover</button>
+      </div>
+      <div class="video-row">
+        <input class="link-input" type="url" placeholder="https://onedrive.live.com/..." value="${escapeAttr(v.link)}" onchange="atualizarVideo(${v.id}, 'link', this.value)" style="flex:1;">
+      </div>
+      <span class="video-status ${temLink ? 'ok' : 'empty'}">${temLink ? '✓ Link colado' : '✗ Falta link OneDrive'}</span>
+    </div>`;
+  }).join('');
+}
+
+// ============================================
+// VÍDEOS E2 — 3 fases obrigatórias (gravação simples)
+// ============================================
+// Cada vídeo gravado abre a câmara nativa do telemóvel.
+// O vídeo é guardado na galeria do telemóvel (OneDrive Camera Upload trata do resto).
+// A app apenas regista que o vídeo foi gravado, com data/hora e nome de ficheiro,
+// para a Sónia depois cruzar com os ficheiros que aparecem no OneDrive.
+
+function gravarVideoFase(faseId) {
+  // Criar input file dinâmico apontado à câmara
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'video/*';
+  input.capture = 'environment';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const agora = new Date();
+      state.videosE2[faseId] = {
+        gravado: true,
+        nomeFicheiro: file.name || ('video_' + faseId + '.mp4'),
+        tamanhoMB: Math.round((file.size / 1048576) * 10) / 10,
+        dataHora: agora.toISOString(),
+        dataHoraFmt: agora.toLocaleString('pt-PT'),
+        // Mantemos campo link/notas por compatibilidade — vazios neste fluxo
+        link: '',
+        notas: ''
+      };
+      atualizarConfirmacaoVideo(faseId);
+    }
+    document.body.removeChild(input);
+  };
+  input.click();
+}
+
+function atualizarConfirmacaoVideo(faseId) {
+  const fid_cap = faseId.charAt(0).toUpperCase() + faseId.slice(1);
+  const confirmEl = document.getElementById('confirmVideo' + fid_cap);
+  const btnEl = document.getElementById('btnGravar' + fid_cap);
+  const v = state.videosE2[faseId];
+
+  if (!confirmEl || !btnEl) return;
+
+  if (v && v.gravado) {
+    confirmEl.innerHTML = `✅ <strong>Vídeo gravado</strong> — ${v.dataHoraFmt} (${v.tamanhoMB} MB)`;
+    confirmEl.style.display = 'block';
+    btnEl.textContent = '🔄 Gravar de novo';
+    btnEl.classList.add('regravar');
+  } else {
+    confirmEl.style.display = 'none';
+    btnEl.textContent = btnEl.dataset.label || '🎬 Gravar Vídeo';
+    btnEl.classList.remove('regravar');
+  }
+}
+
+function renderVideosE2() {
+  // Actualizar confirmações visuais a partir do estado (usado ao recarregar rascunho)
+  ['inicio', 'intermedio', 'final'].forEach(id => atualizarConfirmacaoVideo(id));
+}
+
+// Manter funções antigas como no-op para compatibilidade (caso ainda sejam chamadas)
+function atualizarVideoE2() {}
+function atualizarStatusVideoE2() {}
+function abrirOneDrive() {}
+function onVideoRecorded() {}
+function buscarVideoRecente() {}
+function aplicarVideo() {}
+function escolherVideo() {}
+function configurarBuscarVideos() {}
+
+// ============================================
+// ASSINATURAS
+// ============================================
+function setupSignaturePads() {
+  setupSignaturePad('sigEmbaresa', 'embaresa', 'statusSigEmbaresa');
+  setupSignaturePad('sigCliente', 'cliente', 'statusSigCliente');
+}
+
+function setupSignaturePad(canvasId, key, statusId) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  const status = document.getElementById(statusId);
+
+  // Resize for crisp drawing
+  function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * (window.devicePixelRatio || 1);
+    canvas.height = 160 * (window.devicePixelRatio || 1);
+    ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1a1a2e';
+  }
+  resizeCanvas();
+  window.addEventListener('resize', () => {
+    // Save and restore drawing on resize
+    const saved = state.signatures[key];
+    resizeCanvas();
+    if (saved) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, canvas.getBoundingClientRect().width, 160);
+      img.src = saved;
+    }
+  });
+
+  let drawing = false;
+  let hasDrawn = false;
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  }
+
+  function start(e) {
+    e.preventDefault();
+    drawing = true;
+    const p = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+  }
+  function move(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    const p = getPos(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    hasDrawn = true;
+  }
+  function end(e) {
+    if (!drawing) return;
+    if (e) e.preventDefault();
+    drawing = false;
+    if (hasDrawn) {
+      state.signatures[key] = canvas.toDataURL('image/png');
+      canvas.classList.add('signed');
+      status.textContent = '✓ Assinado';
+      status.style.color = '#28a745';
+      atualizarTags();
+    }
+  }
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  canvas.addEventListener('mouseup', end);
+  canvas.addEventListener('mouseleave', end);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end, { passive: false });
+}
+
+function limparAssinatura(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  canvas.classList.remove('signed');
+  const key = canvasId === 'sigEmbaresa' ? 'embaresa' : 'cliente';
+  delete state.signatures[key];
+  const statusId = canvasId === 'sigEmbaresa' ? 'statusSigEmbaresa' : 'statusSigCliente';
+  const status = document.getElementById(statusId);
+  status.textContent = 'Por assinar';
+  status.style.color = '#666';
+  atualizarTags();
+}
+
+// ============================================
+// RECOLHA DE DADOS
+// ============================================
+function getDados() {
+  // Helper defensivo: lê valor de elemento, devolve fallback se elemento não existir
+  const v = (id, fallback = '—') => {
+    const el = document.getElementById(id);
+    return el ? (el.value || fallback) : fallback;
+  };
+
+  const dataInput = v('dataEmbalamento', '');
+  const dataFormatada = dataInput ? dataInput.split('-').reverse().join('/') : '';
+  const codigo = v('planoNum', '');
+  const planoInfo = PLANOS_DB[codigo] || { nome: '', tipo: 'EMBALAGEM' };
+  const isE2 = E2_PLANOS.includes(codigo);
+
+  return {
+    cliente: v('cliente', ''),
+    numEncomenda: v('numEncomenda', '—'),
+    numSerie: v('numSerie', '—'),
+    planoNum: codigo,
+    planoNome: planoInfo.nome,
+    planoTipo: planoInfo.tipo,
+    isE2,
+    e2Label: isE2 ? E2_PLANO_LABELS[codigo] : '',
+    dataFormatada,
+    dataInput,
+    localVerif: '—',  // campo removido
+    comprimento: v('comprimento', ''),
+    largura: v('largura', ''),
+    altura: v('altura', ''),
+    observacoes: v('observacoes', '—'),
+    operadorEmbaresa: (v('operadorEmbaresa', '') || '').trim() || '—',
+    operadorCliente: v('operadorCliente', '—'),
+    emailCliente: v('emailCliente', ''),
+    emailCC: v('emailCC', '')
+  };
+}
+
+// ============================================
+// GERAÇÃO DO RELATÓRIO HTML
+// ============================================
+function gerarRelatorioHTML() {
+  const d = getDados();
+  const ehEmbalagem = d.planoTipo === 'EMBALAGEM';
+
+  let checklistHTML = '';
+  if (ehEmbalagem) {
+    checklistHTML = '<table class="rep-table"><thead><tr><th>Item</th><th>Estado</th></tr></thead><tbody>';
+    CHECKLIST_TEMPLATE.forEach(group => {
+      checklistHTML += `<tr class="rep-section-row"><td colspan="2"><strong>${group.section}</strong></td></tr>`;
+      group.items.forEach(item => {
+        const key = `${group.section}::${item}`;
+        const v = state.checklist[key];
+        const display = v === 'ok' ? '<span class="rep-ok">✓ OK</span>' :
+                        v === 'nok' ? '<span class="rep-nok">✗ NOK</span>' :
+                        v === 'na' ? '<span class="rep-na">N/A</span>' : '—';
+        checklistHTML += `<tr><td>${item}</td><td style="text-align:center;width:120px;">${display}</td></tr>`;
+      });
+    });
+    checklistHTML += '</tbody></table>';
+  }
+
+  // Fotos organizadas por passo
+  const fotosHTML = state.fotos.length === 0 ? '<p style="color:#999;">— sem fotos —</p>' :
+    Object.entries(PHOTO_STEPS).map(([key, info]) => {
+      const fotosDoPasso = state.fotos.filter(f => f.step === key);
+      if (fotosDoPasso.length === 0) return '';
+      return `
+        <div class="rep-photo-section">
+          <div class="rep-photo-section-title">📸 ${info.label}</div>
+          <div class="rep-photos">${fotosDoPasso.map(f => `
+            <div class="rep-photo">
+              <img src="${f.dataUrl}" alt="">
+              <div class="rep-photo-label">${escapeHtml(f.label) || ''}</div>
+            </div>
+          `).join('')}</div>
+        </div>`;
+    }).join('');
+
+  // Vídeos: para E2 mostrar 3 fases com nome de ficheiro + data/hora (sem links — vão por OneDrive)
+  let videosHTML;
+  if (d.isE2) {
+    const fasesPreenchidas = E2_FASES.filter(f => state.videosE2[f.id].gravado);
+    if (fasesPreenchidas.length === 0) {
+      videosHTML = '<p style="color:#999;">— sem vídeos registados —</p>';
+    } else {
+      videosHTML = `
+        <div class="rep-e2-banner">
+          <strong>📹 Registo Vídeo — Requisito Aernnova/Projecto E2</strong><br>
+          Componente: ${escapeHtml(d.e2Label)} • PN: ${escapeHtml(d.planoNum)} • SN: ${escapeHtml(d.numSerie)} • Data: ${d.dataFormatada}<br>
+          <em style="font-size:0.82rem;">Os ficheiros de vídeo encontram-se no OneDrive da Embaresa, identificados pelos nomes/horas abaixo.</em>
+        </div>
+        <div class="rep-videos">${E2_FASES.map(fase => {
+          const v = state.videosE2[fase.id];
+          const gravado = v.gravado;
+          return `
+            <div class="rep-video ${gravado ? '' : 'rep-video-missing'}">
+              <div class="rep-video-icon">${gravado ? '🎥' : '⚠️'}</div>
+              <div class="rep-video-info">
+                <div class="rep-video-title">Fase ${fase.num} — ${fase.titulo}</div>
+                <div class="rep-video-sub">${fase.desc}</div>
+                ${gravado
+                  ? `<div class="rep-video-meta">
+                      <strong>Ficheiro:</strong> ${escapeHtml(v.nomeFicheiro || '—')}<br>
+                      <strong>Gravado em:</strong> ${escapeHtml(v.dataHoraFmt || '—')}
+                      ${v.tamanhoMB ? ` <strong>•</strong> ${v.tamanhoMB} MB` : ''}
+                    </div>`
+                  : `<span style="color:#dc3545;font-weight:600;font-size:0.85rem;">⚠ Vídeo em falta</span>`}
+              </div>
+            </div>`;
+        }).join('')}</div>`;
+    }
+  } else {
+    videosHTML = '<p style="color:#999;">— sem vídeos —</p>';
+  }
+
+  const dimensoesHTML = ehEmbalagem ? `
+    <h2>Dimensões</h2>
+    <table class="rep-table">
+      <tr><td><strong>Comprimento</strong></td><td>${d.comprimento || '—'} mm</td>
+          <td><strong>Largura</strong></td><td>${d.largura || '—'} mm</td>
+          <td><strong>Altura</strong></td><td>${d.altura || '—'} mm</td></tr>
+    </table>` : '';
+
+  const sigEmbaresaHTML = state.signatures.embaresa
+    ? `<img src="${state.signatures.embaresa}" style="max-width:280px; border-bottom:1px solid #999;">`
+    : '<div style="height:50px;border-bottom:1px solid #999;"></div>';
+  const sigClienteHTML = state.signatures.cliente
+    ? `<img src="${state.signatures.cliente}" style="max-width:280px; border-bottom:1px solid #999;">`
+    : '<div style="height:50px;border-bottom:1px solid #999;"></div>';
+
+  const html = `<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<title>Relatório de Embalamento — ${d.numSerie} — ${d.planoNum}</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; color: #1a1a2e; max-width: 900px; margin: 20px auto; padding: 20px; line-height: 1.4; }
+  h1 { font-size: 1.4rem; text-align: center; margin: 0 0 4px; border-bottom: 3px solid #00d4ff; padding-bottom: 10px; }
+  h2 { font-size: 1.05rem; margin: 22px 0 10px; padding: 6px 10px; background: #f0f7ff; border-left: 4px solid #00d4ff; }
+  .rep-header { text-align: center; color: #555; font-size: 0.85rem; margin-bottom: 18px; }
+  .rep-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  .rep-table th, .rep-table td { border: 1px solid #d0d7de; padding: 6px 10px; text-align: left; }
+  .rep-table th { background: #f6f8fa; font-weight: 600; }
+  .rep-section-row { background: #eaf2fb; }
+  .rep-ok { color: #28a745; font-weight: 700; }
+  .rep-nok { color: #dc3545; font-weight: 700; }
+  .rep-na { color: #6c757d; }
+  .rep-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+  .rep-photo-section { margin-bottom: 14px; }
+  .rep-photo-section-title { font-weight: 700; color: #1a1a2e; padding: 6px 10px; background: #f0f7ff; border-left: 3px solid #00d4ff; margin-bottom: 8px; font-size: 0.92rem; }
+  .rep-photo { border: 1px solid #ddd; border-radius: 6px; overflow: hidden; }
+  .rep-photo img { width: 100%; height: 140px; object-fit: cover; display: block; }
+  .rep-photo-label { padding: 4px 8px; font-size: 0.78rem; color: #555; background: #fafbfc; border-top: 1px solid #eee; min-height: 18px; }
+  .rep-videos { display: flex; flex-direction: column; gap: 8px; }
+  .rep-video { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: #f0f7ff; border: 1px solid #00d4ff; border-radius: 8px; }
+  .rep-video.rep-video-missing { background: #fff3e0; border-color: #ff9800; }
+  .rep-video-icon { font-size: 1.8rem; }
+  .rep-video-title { font-weight: 600; margin-bottom: 2px; }
+  .rep-video-sub { font-size: 0.8rem; color: #666; margin-bottom: 6px; }
+  .rep-video-notes { font-size: 0.82rem; color: #444; margin-bottom: 6px; padding: 4px 8px; background: rgba(255,255,255,0.6); border-radius: 4px; }
+  .rep-video-link { display: inline-block; padding: 6px 12px; background: #0078d4; color: #fff; text-decoration: none; border-radius: 4px; font-size: 0.85rem; font-weight: 600; }
+  .rep-e2-banner { padding: 10px 14px; background: #fff3e0; border: 2px solid #ff9800; border-radius: 8px; margin-bottom: 12px; font-size: 0.88rem; color: #e65100; }
+  .rep-sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 10px; }
+  .rep-sig { padding: 10px; border: 1px solid #ddd; border-radius: 8px; }
+  .rep-sig-label { font-size: 0.75rem; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .rep-sig-name { font-weight: 600; margin-bottom: 8px; }
+  .rep-obs { padding: 10px 14px; background: #fafbfc; border-left: 4px solid #d0d7de; border-radius: 4px; white-space: pre-wrap; font-size: 0.9rem; }
+  .rep-footer { margin-top: 30px; padding-top: 14px; border-top: 1px solid #ddd; text-align: center; font-size: 0.78rem; color: #888; }
+  @media print { body { margin: 0; padding: 12px; } @page { margin: 1cm; } }
+</style>
+</head>
+<body>
+  <h1>📦 Relatório de Embalamento</h1>
+  <div class="rep-header">Embaresa PT — Controlo de Qualidade • ${d.dataFormatada} • ${escapeHtml(d.localVerif)}</div>
+
+  <h2>1. Identificação</h2>
+  <table class="rep-table">
+    <tr><td><strong>Cliente</strong></td><td colspan="3">${escapeHtml(d.cliente)}</td></tr>
+    <tr><td><strong>Nº Encomenda</strong></td><td>${escapeHtml(d.numEncomenda)}</td>
+        <td><strong>Nº Série</strong></td><td>${escapeHtml(d.numSerie)}</td></tr>
+    <tr><td><strong>Plano Nº</strong></td><td>${escapeHtml(d.planoNum)}</td>
+        <td><strong>Tipo</strong></td><td>${ehEmbalagem ? '📦 EMBALAGEM' : '📄 FRAÇÃO'}</td></tr>
+    <tr><td><strong>Produto</strong></td><td colspan="3">${escapeHtml(d.planoNome)}</td></tr>
+  </table>
+
+  ${ehEmbalagem ? `<h2>2. Verificação</h2>${checklistHTML}` : ''}
+  ${dimensoesHTML}
+
+  <h2>${ehEmbalagem ? '4' : '2'}. Fotos</h2>
+  ${fotosHTML}
+
+  <h2>${ehEmbalagem ? '5' : '3'}. Vídeos</h2>
+  ${videosHTML}
+
+  <h2>${ehEmbalagem ? '6' : '4'}. Observações</h2>
+  <div class="rep-obs">${escapeHtml(d.observacoes)}</div>
+
+  <h2>${ehEmbalagem ? '7' : '5'}. Assinaturas</h2>
+  <div class="rep-sig-grid">
+    <div class="rep-sig">
+      <div class="rep-sig-label">Operador Embaresa PT</div>
+      <div class="rep-sig-name">${escapeHtml(d.operadorEmbaresa)}</div>
+      ${sigEmbaresaHTML}
+      <div style="font-size:0.75rem; color:#666; margin-top:6px;">Data: ${d.dataFormatada}</div>
+    </div>
+    <div class="rep-sig">
+      <div class="rep-sig-label">Operador Cliente</div>
+      <div class="rep-sig-name">${escapeHtml(d.operadorCliente)}</div>
+      ${sigClienteHTML}
+      <div style="font-size:0.75rem; color:#666; margin-top:6px;">Data: ${d.dataFormatada}</div>
+    </div>
+  </div>
+
+  <div class="rep-footer">
+    Relatório gerado em ${new Date().toLocaleString('pt-PT')} — Embaresa PT — Controlo de Qualidade
+  </div>
+</body>
+</html>`;
+  return html;
+}
+
+// ============================================
+// FICHA DE RASTREABILIDADE VÍDEO E2
+// ============================================
+function gerarFichaRastreabilidade() {
+  const d = getDados();
+  if (!d.isE2) {
+    alert('A Ficha de Rastreabilidade Vídeo é apenas para componentes do Projecto E2.');
+    return;
+  }
+
+  const fasesHTML = E2_FASES.map(fase => {
+    const v = state.videosE2[fase.id];
+    const gravado = v.gravado;
+    return `
+      <tr>
+        <td style="text-align:center;font-weight:700;background:${gravado ? '#e8f5e9' : '#ffebee'};">${fase.num}</td>
+        <td><strong>${fase.titulo}</strong><div style="font-size:0.78rem;color:#666;margin-top:3px;">${fase.desc}</div></td>
+        <td>${gravado ? `<div style="font-size:0.82rem;"><strong>Ficheiro:</strong> ${escapeHtml(v.nomeFicheiro || '—')}<br><strong>Hora:</strong> ${escapeHtml(v.dataHoraFmt || '—')}</div>` : '<span style="color:#dc3545;">⚠ Em falta</span>'}</td>
+        <td style="font-size:0.85rem;">${escapeHtml(v.notas) || '—'}</td>
+      </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<title>Ficha de Rastreabilidade Vídeo — ${d.numSerie} — ${d.planoNum}</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; color: #1a1a2e; max-width: 800px; margin: 20px auto; padding: 20px; }
+  .header { text-align: center; border-bottom: 3px solid #ff9800; padding-bottom: 12px; margin-bottom: 18px; }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  .subtitle { color: #666; font-size: 0.9rem; }
+  .badge { display: inline-block; background: #fff3e0; color: #e65100; padding: 4px 12px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; margin-top: 6px; }
+  .box { padding: 14px; background: #fafbfc; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 16px; }
+  .box h2 { font-size: 1rem; margin: 0 0 10px; color: #1a1a2e; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 0.9rem; }
+  th, td { border: 1px solid #d0d7de; padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f6f8fa; font-weight: 600; }
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+  .meta-grid div { padding: 6px 0; border-bottom: 1px dotted #ddd; }
+  .meta-grid strong { display: inline-block; min-width: 130px; color: #555; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.3px; }
+  .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #ddd; font-size: 0.78rem; color: #888; text-align: center; }
+  .alert { padding: 10px 14px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px; font-size: 0.85rem; margin-bottom: 16px; }
+  @media print { body { margin: 0; padding: 14px; } @page { margin: 1.5cm; size: A4; } .no-print { display: none; } }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>📹 Ficha de Rastreabilidade Vídeo</h1>
+    <div class="subtitle">Embaresa PT — Registo Vídeo do Embalamento</div>
+    <div class="badge">Projecto E2 — Requisito Aernnova</div>
+  </div>
+
+  <div class="alert">
+    Esta ficha documenta o registo vídeo das 3 fases de embalamento do componente abaixo, conforme requisito da Aernnova Évora para o Projecto E2.
+  </div>
+
+  <div class="box">
+    <h2>Identificação do Embalamento</h2>
+    <div class="meta-grid">
+      <div><strong>Cliente:</strong> ${escapeHtml(d.cliente)}</div>
+      <div><strong>Componente E2:</strong> ${escapeHtml(d.e2Label)}</div>
+      <div><strong>PN (Plano):</strong> ${escapeHtml(d.planoNum)}</div>
+      <div><strong>SN (Série):</strong> ${escapeHtml(d.numSerie)}</div>
+      <div><strong>Tipo embalagem:</strong> ${escapeHtml(d.planoNome)}</div>
+      <div><strong>Nº Encomenda:</strong> ${escapeHtml(d.numEncomenda)}</div>
+      <div><strong>Data embalamento:</strong> ${d.dataFormatada}</div>
+      <div><strong>Operador:</strong> ${escapeHtml(d.operadorEmbaresa)}</div>
+    </div>
+  </div>
+
+  <h2 style="font-size:1rem;margin:0 0 8px;">Registo das 3 Fases</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:50px;">Fase</th>
+        <th style="width:30%;">Descrição</th>
+        <th>Link OneDrive</th>
+        <th style="width:25%;">Notas</th>
+      </tr>
+    </thead>
+    <tbody>${fasesHTML}</tbody>
+  </table>
+
+  <div class="box" style="margin-top:20px;">
+    <h2>Estado Geral</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div>
+        <strong style="font-size:0.78rem;color:#666;text-transform:uppercase;">Antes do fecho da embalagem</strong>
+        <div style="margin-top:6px;font-size:0.9rem;">${escapeHtml(state.videosE2.intermedio.notas) || '— ver vídeo Fase 2 —'}</div>
+      </div>
+      <div>
+        <strong style="font-size:0.78rem;color:#666;text-transform:uppercase;">Condição final</strong>
+        <div style="margin-top:6px;font-size:0.9rem;">${escapeHtml(state.videosE2.final.notas) || '— ver vídeo Fase 3 —'}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Ficha gerada em ${new Date().toLocaleString('pt-PT')} • Embaresa PT — Controlo de Qualidade<br>
+    Documento para arquivo interno e disponibilização à Aernnova Évora em caso de incidência.
+  </div>
+
+  <div class="no-print" style="text-align:center;margin-top:20px;">
+    <button onclick="window.print()" style="padding:10px 20px;background:#00d4ff;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">🖨️ Imprimir / Guardar PDF</button>
+  </div>
+</body>
+</html>`;
+  return html;
+}
+
+function abrirFichaRastreabilidade() {
+  const d = getDados();
+  if (!d.planoNum) { alert('Selecione um plano primeiro.'); return; }
+  if (!d.isE2) {
+    alert('A Ficha de Rastreabilidade Vídeo é apenas exigida para componentes do Projecto E2.\n\nO plano seleccionado não é E2.');
+    return;
+  }
+  const e2Done = E2_FASES.filter(f => state.videosE2[f.id].gravado).length;
+  if (e2Done < 3) {
+    if (!confirm(`Apenas ${e2Done}/3 vídeos foram gravados. A ficha será gerada com os campos em falta marcados como "Em falta". Continuar?`)) return;
+  }
+  const html = gerarFichaRastreabilidade();
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+// ============================================
+// PRÉ-VISUALIZAÇÃO
+// ============================================
+function previsualizarRelatorio() {
+  if (!validarBasico(true)) return;
+  const html = gerarRelatorioHTML();
+  // Renderizar dentro de um iframe para isolamento de estilos
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'width:100%; height:60vh; border:none;';
+  document.getElementById('previewContent').innerHTML = '';
+  document.getElementById('previewContent').appendChild(iframe);
+  iframe.contentDocument.open();
+  iframe.contentDocument.write(html);
+  iframe.contentDocument.close();
+  document.getElementById('modalPreview').classList.add('active');
+}
+
+// ============================================
+// ENVIO POR EMAIL
+// ============================================
+async function enviarRelatorio() {
+  if (!validarBasico(false)) return;
+
+  // Avisar se estiver offline
+  if (!navigator.onLine) {
+    if (!confirm('⚠️ Está sem ligação à internet.\n\nO relatório vai ser preparado mas não poderá ser enviado até voltar a ter rede.\n\nContinuar mesmo assim?')) return;
+  }
+
+  const d = getDados();
+  const html = gerarRelatorioHTML();
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+
+  // Nome do ficheiro: Relatorio_EM-1663_230324R2_2026-04-28.html
+  const dataFile = d.dataInput || new Date().toISOString().split('T')[0];
+  const snFile = (d.numSerie || 'novo').replace(/\s+/g,'-').replace(/[^a-zA-Z0-9-]/g,'');
+  const planoFile = (d.planoNum || '').replace(/\s+/g,'_');
+  const fileName = `Relatorio_${snFile}_${planoFile}_${dataFile}.html`;
+  const file = new File([blob], fileName, { type: 'text/html' });
+
+  // Assunto e corpo do email — destinatário é Sónia, que reencaminha à Aernnova
+  const tagE2 = d.isE2 ? ' [E2]' : '';
+  const subject = `Relatório Embalamento${tagE2} — ${d.numSerie} — ${d.planoNum}`;
+
+  const corpoE2 = d.isE2 ? `\n\n📹 PROJECTO E2 — Registo vídeo das 3 fases (links no relatório):
+• Fase 1 (Início): ${state.videosE2.inicio.link ? '✓ link OK' : '⚠ em falta'}
+• Fase 2 (Intermédia): ${state.videosE2.intermedio.link ? '✓ link OK' : '⚠ em falta'}
+• Fase 3 (Conclusão): ${state.videosE2.final.link ? '✓ link OK' : '⚠ em falta'}` : '';
+
+  const body = `Olá,
+
+Segue em anexo o relatório de embalamento referente a:
+
+Encomenda: ${d.numEncomenda}
+Nº Série: ${d.numSerie}
+Plano: ${d.planoNum} — ${d.planoNome}
+Data: ${d.dataFormatada}
+Operador: ${d.operadorEmbaresa}${corpoE2}
+
+(Para reencaminhar à Aernnova após validação.)
+
+Cumprimentos,
+${d.operadorEmbaresa}
+Embaresa PT — Embalamento`;
+
+  // Tentar Web Share API com ficheiro (iOS Safari 15+, Android Chrome 89+)
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        title: subject,
+        text: body,
+        files: [file]
+      });
+      mostrarSucesso('Partilha aberta. Escolha "Outlook" ou "Mail" e clique em Enviar.');
+      return;
+    } catch (err) {
+      // Utilizador cancelou ou Web Share falhou — fazer fallback
+      console.log('[Share] Cancelado ou erro:', err);
+    }
+  }
+
+  // Fallback: download do ficheiro + abrir mailto (browsers sem Web Share API)
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+  const destEmail = d.emailCliente || CONFIG.emailDestino;
+  let mailto = `mailto:${encodeURIComponent(destEmail)}`;
+  mailto += `?subject=${encodeURIComponent(subject)}`;
+  mailto += `&body=${encodeURIComponent(body + '\n\n[Anexar o ficheiro descarregado: ' + fileName + ']')}`;
+
+  setTimeout(() => {
+    window.location.href = mailto;
+    mostrarSucesso(`Ficheiro descarregado: ${fileName}\n\nNo Outlook/Mail que vai abrir, anexe o ficheiro descarregado e envie.`);
+  }, 500);
+}
+
+// ============================================
+// VALIDAÇÃO
+// ============================================
+function validarBasico(soAviso) {
+  const d = getDados();
+  const erros = [];
+
+  // Validação de campos finais do envio
+  if (!d.emailCliente) erros.push('Indique o email da Aernnova.');
+
+  // No wizard, todos os passos anteriores já foram validados.
+  // Aqui validamos apenas os campos do passo 9.
+  if (erros.length > 0) {
+    alert('⚠️ Antes de enviar:\n\n• ' + erros.join('\n• '));
+    return false;
+  }
+  return true;
+}
+
+function mostrarSucesso(msg) {
+  alert('✅ ' + msg);
+}
+
+// ============================================
+// RASCUNHO (LOCALSTORAGE)
+// ============================================
+function guardarRascunho() {
+  try {
+    const rascunho = {
+      planoNum: document.getElementById('planoNum').value,
+      cliente: document.getElementById('cliente').value,
+      numEncomenda: document.getElementById('numEncomenda').value,
+      numSerie: document.getElementById('numSerie').value,
+      dataEmbalamento: document.getElementById('dataEmbalamento').value,
+      comprimento: document.getElementById('comprimento').value,
+      largura: document.getElementById('largura').value,
+      altura: document.getElementById('altura').value,
+      observacoes: document.getElementById('observacoes').value,
+      operadorEmbaresa: document.getElementById('operadorEmbaresa').value,
+      operadorCliente: document.getElementById('operadorCliente').value,
+      emailCliente: document.getElementById('emailCliente').value,
+      emailCC: document.getElementById('emailCC').value,
+      checklist: state.checklist,
+      videos: state.videos,
+      videosE2: state.videosE2,
+      // Nota: fotos NÃO guardadas no rascunho (podem ser muitas e estourar o localStorage)
+      // Assinaturas NÃO guardadas (têm de ser feitas em pessoa)
+      timestamp: Date.now()
+    };
+    localStorage.setItem('relatorioEmbalamentoRascunho', JSON.stringify(rascunho));
+    alert('💾 Rascunho guardado.\n\nNota: as fotos e assinaturas não são guardadas — terão de ser refeitas se a app for fechada.');
+  } catch (e) {
+    alert('Erro ao guardar rascunho: ' + e.message);
+  }
+}
+
+function carregarRascunho() {
+  try {
+    // Tentar chave nova; se não houver, tentar a antiga (migração)
+    const raw = localStorage.getItem('relatorioEmbalamentoRascunho') || localStorage.getItem('relatorioCampoRascunho');
+    if (!raw) return;
+    const r = JSON.parse(raw);
+    const ageHours = (Date.now() - (r.timestamp || 0)) / 3600000;
+    if (ageHours > 48) {
+      // Rascunho com mais de 48h — descartar
+      localStorage.removeItem('relatorioEmbalamentoRascunho');
+      localStorage.removeItem('relatorioCampoRascunho');
+      return;
+    }
+    if (!confirm(`Foi encontrado um rascunho de há ${Math.round(ageHours)}h. Recuperar?`)) {
+      localStorage.removeItem('relatorioEmbalamentoRascunho');
+      localStorage.removeItem('relatorioCampoRascunho');
+      return;
+    }
+    // Restaurar
+    Object.entries({
+      planoNum: r.planoNum, cliente: r.cliente, numEncomenda: r.numEncomenda,
+      numSerie: r.numSerie, dataEmbalamento: r.dataEmbalamento,
+      comprimento: r.comprimento, largura: r.largura, altura: r.altura,
+      observacoes: r.observacoes, operadorEmbaresa: r.operadorEmbaresa,
+      operadorCliente: r.operadorCliente, emailCliente: r.emailCliente, emailCC: r.emailCC
+    }).forEach(([k, v]) => {
+      if (v === undefined) return;
+      const el = document.getElementById(k);
+      if (el) el.value = v;
+    });
+    onPlanoChange();
+    state.checklist = r.checklist || {};
+    state.videos = r.videos || [];
+    if (r.videosE2) state.videosE2 = r.videosE2;
+    if (state.videos.length > 0) nextVideoId = Math.max(...state.videos.map(v => v.id)) + 1;
+    // Re-aplicar checklist visual
+    Object.entries(state.checklist).forEach(([key, value]) => {
+      const item = document.querySelector(`.check-item[data-key="${CSS.escape(key)}"]`);
+      if (item) {
+        const buttons = item.querySelectorAll('.check-options button');
+        buttons.forEach(b => b.classList.remove('sel-ok','sel-nok','sel-na'));
+        const idx = value === 'ok' ? 0 : value === 'nok' ? 1 : 2;
+        if (buttons[idx]) buttons[idx].classList.add('sel-' + value);
+      }
+    });
+    renderVideos();
+    renderVideosE2();
+    renderTodasFotos();
+  } catch (e) {
+    console.error('Erro ao carregar rascunho:', e);
+  }
+}
+
+// ============================================
+// NOVO RELATÓRIO
+// ============================================
+function novoRelatorio() {
+  if (!confirm('Limpar todos os dados e começar um relatório novo?')) return;
+  // Limpar inputs
+  document.querySelectorAll('input, select, textarea').forEach(el => {
+    if (el.type === 'file') return;
+    if (el.tagName === 'SELECT') el.selectedIndex = 0;
+    else el.value = '';
+  });
+  document.getElementById('dataEmbalamento').valueAsDate = new Date();
+  // Limpar estado
+  state.fotos = [];
+  state.videos = [];
+  state.videosE2 = {
+    inicio: { gravado: false, nomeFicheiro: '', tamanhoMB: 0, dataHora: '', dataHoraFmt: '', link: '', notas: '' },
+    intermedio: { gravado: false, nomeFicheiro: '', tamanhoMB: 0, dataHora: '', dataHoraFmt: '', link: '', notas: '' },
+    final: { gravado: false, nomeFicheiro: '', tamanhoMB: 0, dataHora: '', dataHoraFmt: '', link: '', notas: '' }
+  };
+  state.checklist = {};
+  state.signatures = {};
+  state.currentStep = 1;
+  // Limpar UI das fotos por passo
+  renderTodasFotos();
+  renderVideosE2();
+  document.querySelectorAll('.check-options button').forEach(b => b.classList.remove('sel-ok','sel-nok','sel-na'));
+  limparAssinatura('sigEmbaresa');
+  limparAssinatura('sigCliente');
+  onPlanoChange();
+  showStep(1);
+  localStorage.removeItem('relatorioEmbalamentoRascunho');
+  localStorage.removeItem('relatorioCampoRascunho');
+}
+
+// ============================================
+// MODAIS
+// ============================================
+function abrirAjuda() { document.getElementById('modalAjuda').classList.add('active'); }
+function fecharModal(id) { document.getElementById(id).classList.remove('active'); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+});
+
+// ============================================
+// HELPERS
+// ============================================
+function escapeHtml(s) {
+  if (s === undefined || s === null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+</script>
+</body>
+</html>
