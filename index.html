@@ -683,8 +683,9 @@
           <input type="text" id="numEncomenda" placeholder="Deixar em branco se não souber">
         </div>
         <div class="form-group">
-          <label>Nº Série EM (caixa)</label>
-          <input type="text" id="numSerie" value="EM " placeholder="EM 1663">
+          <label>Nº Série EM <span style="color:#0066cc;font-weight:normal;font-size:0.78rem;">(escreva só o número, ex: 1663)</span></label>
+          <input type="text" id="numSerie" placeholder="1663" inputmode="numeric" oninput="atualizarPreviewSerie()">
+          <div id="previewSerie" style="font-size:0.8rem;color:#28a745;margin-top:4px;display:none;font-weight:600;"></div>
         </div>
       </div>
 
@@ -991,7 +992,7 @@ const CONFIG = {
   powerAutomateEndpoint: '',  // Ex: 'https://prod-XX.westeurope.logic.azure.com:443/workflows/...'
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.4.3'
+  versao: '1.4.4'
 };
 // ============================================
 
@@ -1266,7 +1267,7 @@ function validarPasso(n) {
   switch (n) {
     case 1:
       if (!d.planoNum) erros.push('Selecione um plano.');
-      if (d.numSerie === '—' || d.numSerie.trim() === 'EM' || d.numSerie.trim() === '') erros.push('Indique o nº de série da caixa (ex: EM 1663).');
+      if (d.numSerie === '—') erros.push('Indique o nº de série da caixa (ex: 1663).');
       if (!d.operadorEmbaresa || d.operadorEmbaresa === '—') erros.push('Indique o nome do operador.');
       // Foto SN é recomendada mas não obrigatória
       break;
@@ -1760,6 +1761,32 @@ function limparAssinatura(canvasId) {
 // ============================================
 // RECOLHA DE DADOS
 // ============================================
+// Mostra prévisualização do nº de série como vai aparecer no relatório
+function atualizarPreviewSerie() {
+  const input = document.getElementById('numSerie');
+  const preview = document.getElementById('previewSerie');
+  if (!input || !preview) return;
+  const normalizado = normalizarNumSerie(input.value);
+  if (normalizado === '—') {
+    preview.style.display = 'none';
+  } else {
+    preview.textContent = '✓ Será gravado como: ' + normalizado;
+    preview.style.display = 'block';
+  }
+}
+
+// Normaliza nº de série: garante prefixo "EM " e número limpo
+// Aceita: "1663", "EM 1663", "EM1663", "em 1663", "  1663  " — tudo vira "EM 1663"
+function normalizarNumSerie(valor) {
+  if (!valor) return '—';
+  const limpo = valor.toString().trim();
+  if (!limpo) return '—';
+  // Extrair só os dígitos
+  const apenasNumero = limpo.replace(/\D+/g, '');
+  if (!apenasNumero) return '—';
+  return 'EM ' + apenasNumero;
+}
+
 function getDados() {
   // Helper defensivo: lê valor de elemento, devolve fallback se elemento não existir
   const v = (id, fallback = '—') => {
@@ -1776,7 +1803,7 @@ function getDados() {
   return {
     cliente: v('cliente', ''),
     numEncomenda: v('numEncomenda', '—'),
-    numSerie: v('numSerie', '—'),
+    numSerie: normalizarNumSerie(v('numSerie', '')),
     planoNum: codigo,
     planoNome: planoInfo.nome,
     planoTipo: planoInfo.tipo,
