@@ -1,6 +1,6 @@
 // Embaresa QC — Service Worker
 // Versão: incrementar quando publicar nova versão para forçar update no telemóvel
-const CACHE_VERSION = 'embaresa-qc-v1-4';
+const CACHE_VERSION = 'embaresa-qc-v1-4-2';
 const ASSETS = [
   './',
   './index.html',

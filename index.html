@@ -180,8 +180,20 @@
     background: #fff;
     display: block;
     touch-action: none;
+    -ms-touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    cursor: crosshair;
   }
   .sig-canvas.signed { border-style: solid; border-color: #00d4ff; }
+  .sig-canvas-hint {
+    text-align: center;
+    font-size: 0.78rem;
+    color: #888;
+    margin-top: 4px;
+    font-style: italic;
+  }
   .sig-actions { display: flex; gap: 8px; margin-top: 6px; }
   .btn-sig-clear {
     background: #f0f0f0; color: #333; border: 1px solid #d0d7de;
@@ -470,6 +482,29 @@
     background: rgba(255,255,255,0.6);
     border-radius: 4px;
     line-height: 1.4;
+  }
+
+  /* Auto-save indicator */
+  .auto-save-indicador {
+    position: fixed;
+    bottom: 80px;
+    right: 16px;
+    background: #1b5e20;
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    z-index: 2500;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+  .auto-save-indicador.show {
+    opacity: 0.95;
+    transform: translateY(0);
   }
 
   /* Botão "Buscar Vídeo Recente" (Power Automate) */
@@ -846,6 +881,7 @@
           <div id="operadorEmbaresaSigDisplay" style="padding:12px;background:#f0f7ff;border-radius:8px;font-weight:600;color:#1a1a2e;">— Voltar ao Passo 1 e seleccionar —</div>
         </div>
         <canvas id="sigEmbaresa" class="sig-canvas"></canvas>
+        <div class="sig-canvas-hint">👆 Assinar com o dedo dentro do quadro</div>
         <div class="sig-actions">
           <button class="btn-sig-clear" onclick="limparAssinatura('sigEmbaresa')">Limpar</button>
           <span class="sig-status" id="statusSigEmbaresa">Por assinar</span>
@@ -858,6 +894,7 @@
           <input type="text" id="operadorCliente" placeholder="Nome do colaborador Aernnova">
         </div>
         <canvas id="sigCliente" class="sig-canvas"></canvas>
+        <div class="sig-canvas-hint">👆 Assinar com o dedo dentro do quadro</div>
         <div class="sig-actions">
           <button class="btn-sig-clear" onclick="limparAssinatura('sigCliente')">Limpar</button>
           <span class="sig-status" id="statusSigCliente">Por assinar</span>
@@ -954,7 +991,7 @@ const CONFIG = {
   powerAutomateEndpoint: '',  // Ex: 'https://prod-XX.westeurope.logic.azure.com:443/workflows/...'
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.4.0'
+  versao: '1.4.2'
 };
 // ============================================
 
@@ -1064,7 +1101,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   renderChecklist();
   setupSignaturePads();
-  carregarRascunho();
+  carregarRascunho();  // limpa lixo do localStorage antigo
   renderProgressBar();
   showStep(state.currentStep);
 
@@ -1082,6 +1119,10 @@ document.addEventListener('DOMContentLoaded', () => {
   monitorizarRede();
   configurarBotaoInstalar();
   configurarBuscarVideos();
+
+  // Auto-save robusto (IndexedDB) + tentativa de recuperação
+  configurarAutoSave();
+  tentarRecuperarRascunho();  // pergunta ao utilizador se quer recuperar trabalho anterior
 });
 
 // ============================================
@@ -1174,6 +1215,7 @@ function showStep(n) {
   const target = document.getElementById('step' + n);
   if (target) target.classList.add('active');
   state.currentStep = n;
+  if (typeof autoSave === 'function') autoSave(false);  // gravar mudança de passo
   renderProgressBar();
   // Atualizar action bar
   const btnVoltar = document.getElementById('btnVoltar');
@@ -1191,11 +1233,13 @@ function showStep(n) {
   }
   indicator.textContent = `Passo ${n} de ${TOTAL_STEPS} — ${STEP_LABELS[n-1]}`;
 
-  // Quando entra no Passo 7 (Assinaturas), mostrar o nome do operador
+  // Quando entra no Passo 7 (Assinaturas), mostrar o nome do operador e inicializar canvas
   if (n === 7) {
     const display = document.getElementById('operadorEmbaresaSigDisplay');
     const opVal = document.getElementById('operadorEmbaresa').value;
     if (display) display.textContent = opVal || '— Voltar ao Passo 1 e seleccionar —';
+    // Inicializar canvas só agora — a esta altura os canvas estão visíveis e têm dimensões
+    setTimeout(inicializarCanvasAssinaturas, 50);
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1249,8 +1293,9 @@ function validarPasso(n) {
       if (done < total) erros.push(`Preencha todos os ${total} itens do checklist (faltam ${total - done}).`);
       break;
     case 7:
-      if (!state.signatures.embaresa) erros.push('Recolha a assinatura do operador Embaresa.');
-      if (!state.signatures.cliente) erros.push('Recolha a assinatura do colaborador Aernnova.');
+      const sigOK = (s) => s && typeof s === 'string' && s.length > 100 && s.startsWith('data:image/');
+      if (!sigOK(state.signatures.embaresa)) erros.push('Recolha a assinatura do operador Embaresa.');
+      if (!sigOK(state.signatures.cliente)) erros.push('Recolha a assinatura do colaborador Aernnova.');
       if (!d.operadorCliente || d.operadorCliente === '—') erros.push('Indique o nome do colaborador Aernnova.');
       break;
   }
@@ -1363,6 +1408,7 @@ function setCheck(key, value, btn) {
   parent.querySelectorAll('button').forEach(b => b.classList.remove('sel-ok', 'sel-nok', 'sel-na'));
   btn.classList.add('sel-' + value);
   atualizarTags();
+  autoSave(false);  // debounced
 }
 
 function atualizarTags() {
@@ -1402,6 +1448,7 @@ async function onPhotoSelected(event, stepKey) {
   }
   if (event.target) event.target.value = '';
   renderFotosStep(stepKey);
+  autoSave(true);  // gravar imediatamente após foto
 }
 
 function comprimirImagem(file, maxSize, quality) {
@@ -1447,11 +1494,13 @@ function removerFoto(id) {
   const f = state.fotos.find(x => x.id === id);
   state.fotos = state.fotos.filter(x => x.id !== id);
   if (f) renderFotosStep(f.step);
+  autoSave(true);
 }
 
 function atualizarLegendaFoto(id, label) {
   const f = state.fotos.find(x => x.id === id);
   if (f) f.label = label;
+  autoSave(false);  // debounced
 }
 
 // ============================================
@@ -1527,6 +1576,7 @@ function gravarVideoFase(faseId) {
         notas: ''
       };
       atualizarConfirmacaoVideo(faseId);
+      autoSave(true);  // gravar imediatamente após vídeo
     }
     document.body.removeChild(input);
   };
@@ -1572,52 +1622,50 @@ function configurarBuscarVideos() {}
 // ASSINATURAS
 // ============================================
 function setupSignaturePads() {
+  // Apenas regista os listeners, não dimensiona ainda (canvas está escondido)
   setupSignaturePad('sigEmbaresa', 'embaresa', 'statusSigEmbaresa');
   setupSignaturePad('sigCliente', 'cliente', 'statusSigCliente');
 }
+
+// Guardar referências para re-dimensionar quando o Passo 7 ficar visível
+const sigPads = {};
 
 function setupSignaturePad(canvasId, key, statusId) {
   const canvas = document.getElementById(canvasId);
   const ctx = canvas.getContext('2d');
   const status = document.getElementById(statusId);
 
-  // Resize for crisp drawing
-  function resizeCanvas() {
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * (window.devicePixelRatio || 1);
-    canvas.height = 160 * (window.devicePixelRatio || 1);
-    ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#1a1a2e';
-  }
-  resizeCanvas();
-  window.addEventListener('resize', () => {
-    // Save and restore drawing on resize
-    const saved = state.signatures[key];
-    resizeCanvas();
-    if (saved) {
-      const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0, canvas.getBoundingClientRect().width, 160);
-      img.src = saved;
-    }
-  });
-
   let drawing = false;
   let hasDrawn = false;
 
+  function configurarContexto() {
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#1a1a2e';
+  }
+
   function getPos(e) {
     const rect = canvas.getBoundingClientRect();
-    const t = e.touches ? e.touches[0] : e;
-    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+    return {
+      x: (t.clientX - rect.left) * (canvas.width / rect.width),
+      y: (t.clientY - rect.top) * (canvas.height / rect.height)
+    };
   }
 
   function start(e) {
     e.preventDefault();
     drawing = true;
+    hasDrawn = false;
+    configurarContexto();
     const p = getPos(e);
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
+    // Forçar pequeno traço no início (mesmo se o utilizador só tocar e levantar)
+    ctx.lineTo(p.x + 0.1, p.y + 0.1);
+    ctx.stroke();
+    hasDrawn = true;
   }
   function move(e) {
     if (!drawing) return;
@@ -1636,7 +1684,7 @@ function setupSignaturePad(canvasId, key, statusId) {
       canvas.classList.add('signed');
       status.textContent = '✓ Assinado';
       status.style.color = '#28a745';
-      atualizarTags();
+      autoSave(true);  // gravar imediatamente após assinatura
     }
   }
 
@@ -1647,6 +1695,40 @@ function setupSignaturePad(canvasId, key, statusId) {
   canvas.addEventListener('touchstart', start, { passive: false });
   canvas.addEventListener('touchmove', move, { passive: false });
   canvas.addEventListener('touchend', end, { passive: false });
+  canvas.addEventListener('touchcancel', end, { passive: false });
+
+  // Guardar referência para inicialização posterior
+  sigPads[canvasId] = { canvas, ctx, key, configurarContexto };
+}
+
+// Chamado quando o Passo 7 fica visível pela primeira vez (canvas tem dimensões reais)
+function inicializarCanvasAssinaturas() {
+  Object.entries(sigPads).forEach(([canvasId, info]) => {
+    const { canvas, ctx, key, configurarContexto } = info;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0) return;  // ainda não está visível
+
+    // Guardar conteúdo actual (caso já haja assinatura)
+    const conteudoAntes = canvas.toDataURL();
+    const haviaConteudo = state.signatures[key] || (conteudoAntes !== 'data:,' && !conteudoAntes.endsWith('AAAA'));
+
+    // Definir resolução real
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(160 * dpr);
+    canvas.style.height = '160px';
+
+    configurarContexto();
+
+    // Restaurar conteúdo se havia assinatura
+    if (state.signatures[key]) {
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      };
+      img.src = state.signatures[key];
+    }
+  });
 }
 
 function limparAssinatura(canvasId) {
@@ -1781,19 +1863,21 @@ function gerarRelatorioHTML() {
   }
 
   const dimensoesHTML = ehEmbalagem ? `
-    <h2>Dimensões</h2>
+    <h2>3. Dimensões</h2>
     <table class="rep-table">
       <tr><td><strong>Comprimento</strong></td><td>${d.comprimento || '—'} mm</td>
           <td><strong>Largura</strong></td><td>${d.largura || '—'} mm</td>
           <td><strong>Altura</strong></td><td>${d.altura || '—'} mm</td></tr>
     </table>` : '';
 
-  const sigEmbaresaHTML = state.signatures.embaresa
+  // Considerar assinatura válida apenas se for data URL com conteúdo significativo
+  const sigValida = (s) => s && typeof s === 'string' && s.length > 100 && s.startsWith('data:image/');
+  const sigEmbaresaHTML = sigValida(state.signatures.embaresa)
     ? `<img src="${state.signatures.embaresa}" style="max-width:280px; border-bottom:1px solid #999;">`
-    : '<div style="height:50px;border-bottom:1px solid #999;"></div>';
-  const sigClienteHTML = state.signatures.cliente
+    : '<div style="height:50px;border-bottom:1px solid #999;color:#999;font-style:italic;font-size:0.85rem;padding-top:25px;">(assinatura por recolher)</div>';
+  const sigClienteHTML = sigValida(state.signatures.cliente)
     ? `<img src="${state.signatures.cliente}" style="max-width:280px; border-bottom:1px solid #999;">`
-    : '<div style="height:50px;border-bottom:1px solid #999;"></div>';
+    : '<div style="height:50px;border-bottom:1px solid #999;color:#999;font-style:italic;font-size:0.85rem;padding-top:25px;">(assinatura por recolher)</div>';
 
   const html = `<!DOCTYPE html>
 <html lang="pt">
@@ -1853,16 +1937,16 @@ function gerarRelatorioHTML() {
   ${ehEmbalagem ? `<h2>2. Verificação</h2>${checklistHTML}` : ''}
   ${dimensoesHTML}
 
-  <h2>${ehEmbalagem ? '4' : '2'}. Fotos</h2>
+  <h2>4. Fotos</h2>
   ${fotosHTML}
 
-  <h2>${ehEmbalagem ? '5' : '3'}. Vídeos</h2>
+  <h2>5. Vídeos</h2>
   ${videosHTML}
 
-  <h2>${ehEmbalagem ? '6' : '4'}. Observações</h2>
+  <h2>6. Observações</h2>
   <div class="rep-obs">${escapeHtml(d.observacoes)}</div>
 
-  <h2>${ehEmbalagem ? '7' : '5'}. Assinaturas</h2>
+  <h2>7. Assinaturas</h2>
   <div class="rep-sig-grid">
     <div class="rep-sig">
       <div class="rep-sig-label">Operador Embaresa PT</div>
@@ -2058,10 +2142,10 @@ async function enviarRelatorio() {
   const tagE2 = d.isE2 ? ' [E2]' : '';
   const subject = `Relatório Embalamento${tagE2} — ${d.numSerie} — ${d.planoNum}`;
 
-  const corpoE2 = d.isE2 ? `\n\n📹 PROJECTO E2 — Registo vídeo das 3 fases (links no relatório):
-• Fase 1 (Início): ${state.videosE2.inicio.link ? '✓ link OK' : '⚠ em falta'}
-• Fase 2 (Intermédia): ${state.videosE2.intermedio.link ? '✓ link OK' : '⚠ em falta'}
-• Fase 3 (Conclusão): ${state.videosE2.final.link ? '✓ link OK' : '⚠ em falta'}` : '';
+  const corpoE2 = d.isE2 ? `\n\n📹 PROJECTO E2 — Registo vídeo das 3 fases (vídeos no OneDrive Embaresa):
+• Fase 1 (Início): ${state.videosE2.inicio.gravado ? '✓ ' + state.videosE2.inicio.nomeFicheiro + ' — ' + state.videosE2.inicio.dataHoraFmt : '⚠ em falta'}
+• Fase 2 (Intermédia): ${state.videosE2.intermedio.gravado ? '✓ ' + state.videosE2.intermedio.nomeFicheiro + ' — ' + state.videosE2.intermedio.dataHoraFmt : '⚠ em falta'}
+• Fase 3 (Conclusão): ${state.videosE2.final.gravado ? '✓ ' + state.videosE2.final.nomeFicheiro + ' — ' + state.videosE2.final.dataHoraFmt : '⚠ em falta'}` : '';
 
   const body = `Olá,
 
@@ -2088,6 +2172,8 @@ Embaresa PT — Embalamento`;
         files: [file]
       });
       mostrarSucesso('Partilha aberta. Escolha "Outlook" ou "Mail" e clique em Enviar.');
+      // Apagar rascunho — relatório foi enviado com sucesso
+      apagarRascunhoIDB();
       return;
     } catch (err) {
       // Utilizador cancelou ou Web Share falhou — fazer fallback
@@ -2113,6 +2199,8 @@ Embaresa PT — Embalamento`;
   setTimeout(() => {
     window.location.href = mailto;
     mostrarSucesso(`Ficheiro descarregado: ${fileName}\n\nNo Outlook/Mail que vai abrir, anexe o ficheiro descarregado e envie.`);
+    // Apagar rascunho — relatório foi gerado com sucesso (ficheiro descarregado)
+    apagarRascunhoIDB();
   }, 500);
 }
 
@@ -2136,93 +2224,295 @@ function validarBasico(soAviso) {
 }
 
 function mostrarSucesso(msg) {
+  // Limpar rascunho IndexedDB — relatório enviado com sucesso
+  if (typeof apagarRascunhoIDB === 'function') apagarRascunhoIDB();
   alert('✅ ' + msg);
 }
 
 // ============================================
-// RASCUNHO (LOCALSTORAGE)
+// AUTO-SAVE ROBUSTO COM INDEXEDDB
 // ============================================
-function guardarRascunho() {
-  try {
-    const rascunho = {
-      planoNum: document.getElementById('planoNum').value,
-      cliente: document.getElementById('cliente').value,
-      numEncomenda: document.getElementById('numEncomenda').value,
-      numSerie: document.getElementById('numSerie').value,
-      dataEmbalamento: document.getElementById('dataEmbalamento').value,
-      comprimento: document.getElementById('comprimento').value,
-      largura: document.getElementById('largura').value,
-      altura: document.getElementById('altura').value,
-      observacoes: document.getElementById('observacoes').value,
-      operadorEmbaresa: document.getElementById('operadorEmbaresa').value,
-      operadorCliente: document.getElementById('operadorCliente').value,
-      emailCliente: document.getElementById('emailCliente').value,
-      emailCC: document.getElementById('emailCC').value,
-      checklist: state.checklist,
-      videos: state.videos,
-      videosE2: state.videosE2,
-      // Nota: fotos NÃO guardadas no rascunho (podem ser muitas e estourar o localStorage)
-      // Assinaturas NÃO guardadas (têm de ser feitas em pessoa)
-      timestamp: Date.now()
+// Sistema que guarda automaticamente todo o estado do relatório (incluindo fotos
+// e assinaturas) no IndexedDB do browser. IndexedDB tem limite muito maior que
+// localStorage (~50MB-1GB conforme dispositivo), o que permite guardar fotos.
+//
+// Auto-save dispara em vários momentos:
+//  - Mudança de campo (com debounce de 1s para não saturar)
+//  - Após cada foto tirada / vídeo gravado / assinatura concluída
+//  - Mudança de passo
+//  - Em intervalos regulares (de 30 em 30 segundos como salvaguarda)
+//
+// Recuperação automática: ao abrir a app, verifica se há rascunho recente e
+// pergunta ao utilizador se quer recuperar.
+
+const DB_NAME = 'EmbaresaQC';
+const DB_STORE = 'rascunhos';
+const DB_KEY = 'rascunhoActual';
+let dbInstance = null;
+let autoSavePending = null;
+let autoSaveTimer = null;
+
+function abrirIndexedDB() {
+  return new Promise((resolve, reject) => {
+    if (dbInstance) return resolve(dbInstance);
+    if (!window.indexedDB) {
+      console.warn('[AutoSave] IndexedDB não disponível neste browser. Auto-save desactivado.');
+      return reject(new Error('IndexedDB indisponível'));
+    }
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => { dbInstance = req.result; resolve(dbInstance); };
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(DB_STORE)) {
+        db.createObjectStore(DB_STORE);
+      }
     };
-    localStorage.setItem('relatorioEmbalamentoRascunho', JSON.stringify(rascunho));
-    alert('💾 Rascunho guardado.\n\nNota: as fotos e assinaturas não são guardadas — terão de ser refeitas se a app for fechada.');
+  });
+}
+
+async function gravarRascunhoIDB(dados) {
+  try {
+    const db = await abrirIndexedDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_STORE, 'readwrite');
+      const store = tx.objectStore(DB_STORE);
+      const req = store.put(dados, DB_KEY);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
   } catch (e) {
-    alert('Erro ao guardar rascunho: ' + e.message);
+    console.error('[AutoSave] Erro ao gravar:', e);
   }
 }
 
-function carregarRascunho() {
+async function lerRascunhoIDB() {
   try {
-    // Tentar chave nova; se não houver, tentar a antiga (migração)
-    const raw = localStorage.getItem('relatorioEmbalamentoRascunho') || localStorage.getItem('relatorioCampoRascunho');
-    if (!raw) return;
-    const r = JSON.parse(raw);
-    const ageHours = (Date.now() - (r.timestamp || 0)) / 3600000;
-    if (ageHours > 48) {
-      // Rascunho com mais de 48h — descartar
-      localStorage.removeItem('relatorioEmbalamentoRascunho');
-      localStorage.removeItem('relatorioCampoRascunho');
-      return;
-    }
-    if (!confirm(`Foi encontrado um rascunho de há ${Math.round(ageHours)}h. Recuperar?`)) {
-      localStorage.removeItem('relatorioEmbalamentoRascunho');
-      localStorage.removeItem('relatorioCampoRascunho');
-      return;
-    }
-    // Restaurar
-    Object.entries({
-      planoNum: r.planoNum, cliente: r.cliente, numEncomenda: r.numEncomenda,
-      numSerie: r.numSerie, dataEmbalamento: r.dataEmbalamento,
-      comprimento: r.comprimento, largura: r.largura, altura: r.altura,
-      observacoes: r.observacoes, operadorEmbaresa: r.operadorEmbaresa,
-      operadorCliente: r.operadorCliente, emailCliente: r.emailCliente, emailCC: r.emailCC
-    }).forEach(([k, v]) => {
-      if (v === undefined) return;
-      const el = document.getElementById(k);
-      if (el) el.value = v;
+    const db = await abrirIndexedDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_STORE, 'readonly');
+      const store = tx.objectStore(DB_STORE);
+      const req = store.get(DB_KEY);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
     });
-    onPlanoChange();
-    state.checklist = r.checklist || {};
-    state.videos = r.videos || [];
-    if (r.videosE2) state.videosE2 = r.videosE2;
-    if (state.videos.length > 0) nextVideoId = Math.max(...state.videos.map(v => v.id)) + 1;
-    // Re-aplicar checklist visual
-    Object.entries(state.checklist).forEach(([key, value]) => {
-      const item = document.querySelector(`.check-item[data-key="${CSS.escape(key)}"]`);
-      if (item) {
-        const buttons = item.querySelectorAll('.check-options button');
-        buttons.forEach(b => b.classList.remove('sel-ok','sel-nok','sel-na'));
-        const idx = value === 'ok' ? 0 : value === 'nok' ? 1 : 2;
-        if (buttons[idx]) buttons[idx].classList.add('sel-' + value);
-      }
-    });
-    renderVideos();
-    renderVideosE2();
-    renderTodasFotos();
   } catch (e) {
-    console.error('Erro ao carregar rascunho:', e);
+    console.error('[AutoSave] Erro ao ler:', e);
+    return null;
   }
+}
+
+async function apagarRascunhoIDB() {
+  try {
+    const db = await abrirIndexedDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_STORE, 'readwrite');
+      const store = tx.objectStore(DB_STORE);
+      const req = store.delete(DB_KEY);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.error('[AutoSave] Erro ao apagar:', e);
+  }
+}
+
+function recolherEstadoCompleto() {
+  const v = (id, def = '') => {
+    const el = document.getElementById(id);
+    return el ? (el.value || def) : def;
+  };
+  return {
+    versao: CONFIG.versao,
+    timestamp: Date.now(),
+    currentStep: state.currentStep,
+    formData: {
+      planoNum: v('planoNum'),
+      cliente: v('cliente'),
+      numEncomenda: v('numEncomenda'),
+      numSerie: v('numSerie'),
+      dataEmbalamento: v('dataEmbalamento'),
+      comprimento: v('comprimento'),
+      largura: v('largura'),
+      altura: v('altura'),
+      observacoes: v('observacoes'),
+      operadorEmbaresa: v('operadorEmbaresa'),
+      operadorCliente: v('operadorCliente'),
+      emailCliente: v('emailCliente'),
+      emailCC: v('emailCC')
+    },
+    fotos: state.fotos,           // inclui dataUrls comprimidos
+    videosE2: state.videosE2,
+    checklist: state.checklist,
+    signatures: state.signatures  // inclui dataUrls das assinaturas
+  };
+}
+
+function autoSave(imediato) {
+  // Cancelar gravação pendente (debounce)
+  if (autoSavePending) clearTimeout(autoSavePending);
+
+  const fazer = async () => {
+    autoSavePending = null;
+    try {
+      const dados = recolherEstadoCompleto();
+      await gravarRascunhoIDB(dados);
+      // Indicador visual subtil — mostra "guardado" momentaneamente
+      mostrarAutoSaveStatus();
+    } catch (e) {
+      console.error('[AutoSave] Falha:', e);
+    }
+  };
+
+  if (imediato) {
+    fazer();
+  } else {
+    // Debounce de 1 segundo (evita gravar a cada caractere digitado)
+    autoSavePending = setTimeout(fazer, 1000);
+  }
+}
+
+function mostrarAutoSaveStatus() {
+  let indicador = document.getElementById('autoSaveIndicador');
+  if (!indicador) {
+    indicador = document.createElement('div');
+    indicador.id = 'autoSaveIndicador';
+    indicador.className = 'auto-save-indicador';
+    indicador.textContent = '💾 Guardado';
+    document.body.appendChild(indicador);
+  }
+  indicador.classList.add('show');
+  clearTimeout(indicador._timeout);
+  indicador._timeout = setTimeout(() => indicador.classList.remove('show'), 1500);
+}
+
+// Detectar quando a app vai para background — gravar imediatamente
+function configurarAutoSave() {
+  // Salvaguarda periódica: gravar a cada 30s mesmo sem interacção
+  setInterval(() => {
+    if (state.fotos.length > 0 || Object.keys(state.signatures).length > 0 || state.videosE2.inicio.gravado) {
+      autoSave(true);
+    }
+  }, 30000);
+
+  // Quando o utilizador esconde a app, browser perde o foco, ou o telemóvel
+  // entra em modo de poupança — gravar imediatamente
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      autoSave(true);
+    }
+  });
+  window.addEventListener('pagehide', () => autoSave(true));
+  window.addEventListener('blur', () => autoSave(true));
+
+  // Quando algum input ou select muda, agendar auto-save (debounced)
+  document.addEventListener('input', (e) => {
+    if (e.target.matches('input, select, textarea')) autoSave(false);
+  });
+  document.addEventListener('change', (e) => {
+    if (e.target.matches('input, select, textarea')) autoSave(false);
+  });
+}
+
+async function tentarRecuperarRascunho() {
+  const r = await lerRascunhoIDB();
+  if (!r || !r.timestamp) return;
+
+  const idadeMinutos = (Date.now() - r.timestamp) / 60000;
+
+  // Auto-descartar rascunhos com mais de 24h
+  if (idadeMinutos > 24 * 60) {
+    await apagarRascunhoIDB();
+    return;
+  }
+
+  // Verificar se vale a pena recuperar (tem algum dado relevante?)
+  const temDados = (r.formData && (r.formData.planoNum || r.formData.numSerie)) ||
+                   (r.fotos && r.fotos.length > 0) ||
+                   (r.videosE2 && (r.videosE2.inicio.gravado || r.videosE2.intermedio.gravado || r.videosE2.final.gravado)) ||
+                   (r.checklist && Object.keys(r.checklist).length > 0);
+  if (!temDados) {
+    await apagarRascunhoIDB();
+    return;
+  }
+
+  // Formatar idade
+  let textoIdade;
+  if (idadeMinutos < 60) textoIdade = `há ${Math.round(idadeMinutos)} min`;
+  else textoIdade = `há ${Math.round(idadeMinutos / 60 * 10) / 10}h`;
+
+  // Construir resumo do que foi recuperado
+  const resumo = [];
+  if (r.formData.planoNum) resumo.push(`Plano: ${r.formData.planoNum}`);
+  if (r.formData.numSerie && r.formData.numSerie.trim() !== 'EM') resumo.push(`Série: ${r.formData.numSerie}`);
+  if (r.fotos && r.fotos.length > 0) resumo.push(`${r.fotos.length} foto(s)`);
+  const videosGravados = ['inicio', 'intermedio', 'final'].filter(f => r.videosE2 && r.videosE2[f] && r.videosE2[f].gravado).length;
+  if (videosGravados > 0) resumo.push(`${videosGravados} vídeo(s)`);
+  if (r.checklist && Object.keys(r.checklist).length > 0) resumo.push(`${Object.keys(r.checklist).length} item(s) checklist`);
+  if (r.signatures && (r.signatures.embaresa || r.signatures.cliente)) resumo.push('assinaturas');
+
+  const msg = `Foi encontrado um rascunho ${textoIdade}.\n\n` +
+              (resumo.length ? resumo.join(' • ') + '\n\n' : '') +
+              `Recuperar trabalho anterior?`;
+
+  if (!confirm(msg)) {
+    await apagarRascunhoIDB();
+    return;
+  }
+
+  // Restaurar tudo
+  Object.entries(r.formData || {}).forEach(([k, val]) => {
+    if (val === undefined) return;
+    const el = document.getElementById(k);
+    if (el) el.value = val;
+  });
+  state.fotos = r.fotos || [];
+  if (r.fotos && r.fotos.length > 0) {
+    nextPhotoId = Math.max(...r.fotos.map(f => f.id)) + 1;
+  }
+  state.checklist = r.checklist || {};
+  if (r.videosE2) state.videosE2 = r.videosE2;
+  state.signatures = r.signatures || {};
+
+  // Disparar onPlanoChange para reactivar lógica E2
+  onPlanoChange();
+
+  // Re-aplicar checklist visual
+  Object.entries(state.checklist).forEach(([key, value]) => {
+    const item = document.querySelector(`.check-item[data-key="${CSS.escape(key)}"]`);
+    if (item) {
+      const buttons = item.querySelectorAll('.check-options button');
+      buttons.forEach(b => b.classList.remove('sel-ok','sel-nok','sel-na'));
+      const idx = value === 'ok' ? 0 : value === 'nok' ? 1 : 2;
+      if (buttons[idx]) buttons[idx].classList.add('sel-' + value);
+    }
+  });
+  renderVideosE2();
+  renderTodasFotos();
+
+  // Saltar para o passo onde o operador estava
+  if (r.currentStep && r.currentStep > 1) {
+    showStep(r.currentStep);
+  }
+}
+
+// ============================================
+// COMPATIBILIDADE COM CÓDIGO ANTIGO
+// ============================================
+// Função antiga "guardarRascunho" (botão na top-bar) faz auto-save imediato + alerta
+function guardarRascunho() {
+  autoSave(true);
+  setTimeout(() => alert('💾 Rascunho guardado.\n\nO seu trabalho fica seguro mesmo se a app fechar.'), 100);
+}
+
+// Função antiga "carregarRascunho" — mantida para compatibilidade, agora redirecciona para IDB
+function carregarRascunho() {
+  // No-op: a recuperação é feita pelo tentarRecuperarRascunho() no init
+  // Apagar rascunhos antigos do localStorage (lixo)
+  try {
+    localStorage.removeItem('relatorioEmbalamentoRascunho');
+    localStorage.removeItem('relatorioCampoRascunho');
+  } catch (e) {}
 }
 
 // ============================================
@@ -2258,6 +2548,7 @@ function novoRelatorio() {
   showStep(1);
   localStorage.removeItem('relatorioEmbalamentoRascunho');
   localStorage.removeItem('relatorioCampoRascunho');
+  apagarRascunhoIDB();  // limpar rascunho IndexedDB
 }
 
 // ============================================
