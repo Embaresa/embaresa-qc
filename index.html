@@ -713,7 +713,7 @@
         <div class="photo-step-label">📸 Foto — Nº de série da caixa <span style="color:#888;font-weight:normal;font-size:0.78rem;">(recomendada)</span></div>
         <div class="photo-step-help">Tire uma foto onde se veja claramente o nº de série EM da caixa (etiqueta ou marcação).</div>
         <div class="upload-row">
-          <button class="btn-capture" onclick="capturarFoto('serie')">📷 Tirar Foto</button>
+          <button class="btn-capture" id="btnFoto_serie" onclick="capturarFoto('serie')">📷 Tirar Foto</button>
         </div>
         <div class="photos-grid" id="photosGrid_serie"></div>
       </div>
@@ -732,7 +732,7 @@
       <div class="photo-step-block nao-e2">
         <div class="photo-step-label">📸 Foto — Estado inicial da peça</div>
         <div class="upload-row">
-          <button class="btn-capture" onclick="capturarFoto('inicial')">📷 Tirar Foto</button>
+          <button class="btn-capture" id="btnFoto_inicial" onclick="capturarFoto('inicial')">📷 Tirar Foto</button>
         </div>
         <div class="photos-grid" id="photosGrid_inicial"></div>
       </div>
@@ -764,7 +764,7 @@
       <div class="photo-step-block">
         <div class="photo-step-label">📸 Foto — Protecção aplicada (película + dessecantes + alumínio)</div>
         <div class="upload-row">
-          <button class="btn-capture" onclick="capturarFoto('protecao')">📷 Tirar Foto</button>
+          <button class="btn-capture" id="btnFoto_protecao" onclick="capturarFoto('protecao')">📷 Tirar Foto</button>
         </div>
         <div class="photos-grid" id="photosGrid_protecao"></div>
       </div>
@@ -783,7 +783,7 @@
       <div class="photo-step-block nao-e2">
         <div class="photo-step-label">📸 Foto — Peça posicionada nos suportes</div>
         <div class="upload-row">
-          <button class="btn-capture" onclick="capturarFoto('posicao')">📷 Tirar Foto</button>
+          <button class="btn-capture" id="btnFoto_posicao" onclick="capturarFoto('posicao')">📷 Tirar Foto</button>
         </div>
         <div class="photos-grid" id="photosGrid_posicao"></div>
       </div>
@@ -815,7 +815,7 @@
       <div class="photo-step-block nao-e2">
         <div class="photo-step-label">📸 Foto — Embalagem completa (vista geral)</div>
         <div class="upload-row">
-          <button class="btn-capture" onclick="capturarFoto('finalGeral')">📷 Tirar Foto</button>
+          <button class="btn-capture" id="btnFoto_finalGeral" onclick="capturarFoto('finalGeral')">📷 Tirar Foto</button>
         </div>
         <div class="photos-grid" id="photosGrid_finalGeral"></div>
       </div>
@@ -823,7 +823,7 @@
       <div class="photo-step-block nao-e2">
         <div class="photo-step-label">📸 Foto — Etiqueta exterior identificação</div>
         <div class="upload-row">
-          <button class="btn-capture" onclick="capturarFoto('finalEtiqueta')">📷 Tirar Foto</button>
+          <button class="btn-capture" id="btnFoto_finalEtiqueta" onclick="capturarFoto('finalEtiqueta')">📷 Tirar Foto</button>
         </div>
         <div class="photos-grid" id="photosGrid_finalEtiqueta"></div>
       </div>
@@ -991,7 +991,7 @@ const CONFIG = {
   powerAutomateEndpoint: '',  // Ex: 'https://prod-XX.westeurope.logic.azure.com:443/workflows/...'
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.4.2'
+  versao: '1.4.3'
 };
 // ============================================
 
@@ -1483,6 +1483,18 @@ function renderFotosStep(stepKey) {
       <input class="label-input" type="text" placeholder="legenda..." value="${escapeAttr(f.label)}" onchange="atualizarLegendaFoto(${f.id}, this.value)">
     </div>
   `).join('');
+
+  // Actualizar texto do botão consoante quantas fotos já há
+  const btn = document.getElementById('btnFoto_' + stepKey);
+  if (btn) {
+    if (fotos.length === 0) {
+      btn.innerHTML = '📷 Tirar Foto';
+    } else if (fotos.length === 1) {
+      btn.innerHTML = '📷 Tirar mais foto <span style="opacity:0.85;font-weight:normal;">(1 já tirada)</span>';
+    } else {
+      btn.innerHTML = `📷 Tirar mais foto <span style="opacity:0.85;font-weight:normal;">(${fotos.length} já tiradas)</span>`;
+    }
+  }
 }
 
 function renderTodasFotos() {
