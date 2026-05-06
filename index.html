@@ -437,6 +437,34 @@
   .embalagem-only { display: block; }
   .embalagem-only.hidden { display: none; }
 
+  /* Photo guide box (instructions for operator) */
+  .photo-guide {
+    background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+    border: 2px solid #2196f3;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+  .photo-guide-title { font-weight: 700; color: #0d47a1; font-size: 0.95rem; margin-bottom: 8px; }
+  .photo-guide-list { margin: 0 0 10px 18px; padding: 0; }
+  .photo-guide-list li { font-size: 0.86rem; color: #1565c0; margin-bottom: 4px; line-height: 1.4; }
+  .photo-counter {
+    background: rgba(255,255,255,0.7);
+    border-radius: 6px;
+    padding: 7px 11px;
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: #0d47a1;
+    text-align: center;
+  }
+  .photo-counter.complete {
+    background: #c8e6c9;
+    color: #1b5e20;
+  }
+  .photo-counter.complete::before {
+    content: "✅ ";
+  }
+
   @media (max-width: 600px) {
     .progress-step { font-size: 0.62rem; padding: 6px 2px; min-width: 50px; }
     .progress-step .num { width: 22px; height: 22px; line-height: 22px; font-size: 0.7rem; }
@@ -624,6 +652,7 @@
 
   <div class="top-bar">
     <button class="btn btn-secondary btn-sm" onclick="novoRelatorio()">🔄 Novo</button>
+    <button class="btn btn-secondary btn-sm" onclick="abrirRelatorioExistente()">📂 Abrir Relatório</button>
     <button class="btn btn-secondary btn-sm" onclick="guardarRascunho()">💾 Guardar</button>
     <button class="btn btn-secondary btn-sm" onclick="abrirAjuda()">❓ Ajuda</button>
     <button class="btn btn-sm" id="btnInstalarPWA" style="background:linear-gradient(135deg,#28a745,#1e7e34);color:#fff;display:none;">📲 Instalar</button>
@@ -695,7 +724,7 @@
           <input type="date" id="dataEmbalamento">
         </div>
         <div class="form-group">
-          <label>Operador Embaresa</label>
+          <label>Operador Embaresa 1</label>
           <select id="operadorEmbaresa">
             <option value="">— Seleccionar operador —</option>
             <option value="André Avelino Tavares Rocha">André Avelino Tavares Rocha</option>
@@ -706,6 +735,37 @@
             <option value="Valdir Tavares">Valdir Tavares</option>
             <option value="William Chaves Inaba">William Chaves Inaba</option>
           </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Operador Embaresa 2</label>
+          <select id="operadorEmbaresa2">
+            <option value="">— Seleccionar operador —</option>
+            <option value="André Avelino Tavares Rocha">André Avelino Tavares Rocha</option>
+            <option value="David Alexandre Lopes Rocha">David Alexandre Lopes Rocha</option>
+            <option value="Nuno Rafael Pereira Franco">Nuno Rafael Pereira Franco</option>
+            <option value="Pedro Miguel Serranito Familia">Pedro Miguel Serranito Familia</option>
+            <option value="Rui Miguel Charrua Richáu">Rui Miguel Charrua Richáu</option>
+            <option value="Valdir Tavares">Valdir Tavares</option>
+            <option value="William Chaves Inaba">William Chaves Inaba</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Cliente Aernnova (nome)</label>
+          <input type="text" id="operadorCliente" placeholder="Nome do representante Aernnova">
+        </div>
+      </div>
+
+      <!-- Checkbox: vídeos E2 -->
+      <div style="background:linear-gradient(135deg,#fff3e0,#ffe0b2);border:2px solid #ff9800;border-radius:8px;padding:14px;margin-top:16px;">
+        <label style="display:flex;align-items:center;cursor:pointer;font-weight:600;color:#e65100;">
+          <input type="checkbox" id="requerVideos" style="margin-right:10px;width:20px;height:20px;cursor:pointer;" onchange="onVideosToggle()">
+          <span>🎥 Esta embalagem requer vídeos (E2 / cliente exigiu)</span>
+        </label>
+        <div style="font-size:0.82rem;color:#bf360c;margin-top:6px;margin-left:30px;">
+          Quando activado, são pedidos 3 vídeos adicionais (Início, Intermédia, Conclusão), além das fotos normais.
         </div>
       </div>
 
@@ -724,24 +784,38 @@
   <!-- ===== PASSO 2: ESTADO INICIAL ===== -->
   <div class="wizard-step" id="step2" data-step="2">
     <div class="step-card">
-      <div class="step-title">🔍 Passo 2 — Estado Inicial do Produto</div>
-      <div class="instruction">
-        <span class="nao-e2-inline">Antes de aplicar qualquer protecção, registe o estado inicial da peça. <strong>Tire pelo menos uma foto</strong> que mostre a peça e a sua identificação (PN/SN).</span>
-        <span class="e2-only-inline">Grave o vídeo da Fase 1 que mostre a peça antes de qualquer acondicionamento, com identificação (PN/SN) visível.</span>
+      <div class="step-title">🔍 Passo 2 — Estado Inicial</div>
+
+      <!-- Caixa de instruções pedagógicas -->
+      <div class="photo-guide">
+        <div class="photo-guide-title">📋 Fotos a tirar neste passo (mínimo 4):</div>
+        <ul class="photo-guide-list">
+          <li><strong>2 fotos da caixa vazia:</strong> uma de frente, outra lateral</li>
+          <li><strong>2 fotos da peça aeronáutica:</strong> antes de iniciar embalamento</li>
+        </ul>
+        <div class="photo-counter" id="counter_step2">📊 Tiradas: 0 de 4 obrigatórias</div>
       </div>
 
-      <div class="photo-step-block nao-e2">
-        <div class="photo-step-label">📸 Foto — Estado inicial da peça</div>
+      <div class="photo-step-block">
+        <div class="photo-step-label">📸 Caixa vazia (frente + lateral) — mínimo 2 fotos</div>
         <div class="upload-row">
-          <button class="btn-capture" id="btnFoto_inicial" onclick="capturarFoto('inicial')">📷 Tirar Foto</button>
+          <button class="btn-capture" id="btnFoto_caixaVazia" onclick="capturarFoto('caixaVazia')">📷 Tirar Foto</button>
         </div>
-        <div class="photos-grid" id="photosGrid_inicial"></div>
+        <div class="photos-grid" id="photosGrid_caixaVazia"></div>
       </div>
 
-      <!-- E2 Vídeo Fase 1 -->
+      <div class="photo-step-block">
+        <div class="photo-step-label">📸 Peça aeronáutica antes de embalar — mínimo 2 fotos</div>
+        <div class="upload-row">
+          <button class="btn-capture" id="btnFoto_pecaInicial" onclick="capturarFoto('pecaInicial')">📷 Tirar Foto</button>
+        </div>
+        <div class="photos-grid" id="photosGrid_pecaInicial"></div>
+      </div>
+
+      <!-- Vídeo Fase 1 (opcional, só se requerVideos) -->
       <div class="e2-video-block e2-only" data-fase="inicio">
         <div class="e2-video-header">
-          <span class="e2-badge">PROJECTO E2 — Aernnova</span>
+          <span class="e2-badge">VÍDEO E2 — Aernnova</span>
           <span class="e2-fase-num">FASE 1</span>
         </div>
         <div class="e2-video-title">🎥 Vídeo — Início do Embalamento</div>
@@ -758,16 +832,30 @@
   <div class="wizard-step" id="step3" data-step="3">
     <div class="step-card">
       <div class="step-title">🛡️ Passo 3 — Aplicação de Protecção</div>
-      <div class="instruction">
-        Aplique a película protetora, dessecantes e o saco barreira de alumínio. Quando tudo estiver aplicado, <strong>tire foto da protecção visível</strong>.
+
+      <div class="photo-guide">
+        <div class="photo-guide-title">📋 Fotos a tirar neste passo (mínimo 4):</div>
+        <ul class="photo-guide-list">
+          <li><strong>2 fotos com bolha + dessecantes:</strong> peça com plástico bolha protector e dessecantes aplicados</li>
+          <li><strong>2 fotos com saco alumínio:</strong> peça envolvida em saco barreira de alumínio</li>
+        </ul>
+        <div class="photo-counter" id="counter_step3">📊 Tiradas: 0 de 4 obrigatórias</div>
       </div>
 
       <div class="photo-step-block">
-        <div class="photo-step-label">📸 Foto — Protecção aplicada (película + dessecantes + alumínio)</div>
+        <div class="photo-step-label">📸 Bolha + dessecantes — mínimo 2 fotos</div>
         <div class="upload-row">
-          <button class="btn-capture" id="btnFoto_protecao" onclick="capturarFoto('protecao')">📷 Tirar Foto</button>
+          <button class="btn-capture" id="btnFoto_bolha" onclick="capturarFoto('bolha')">📷 Tirar Foto</button>
         </div>
-        <div class="photos-grid" id="photosGrid_protecao"></div>
+        <div class="photos-grid" id="photosGrid_bolha"></div>
+      </div>
+
+      <div class="photo-step-block">
+        <div class="photo-step-label">📸 Saco alumínio aplicado — mínimo 2 fotos</div>
+        <div class="upload-row">
+          <button class="btn-capture" id="btnFoto_aluminio" onclick="capturarFoto('aluminio')">📷 Tirar Foto</button>
+        </div>
+        <div class="photos-grid" id="photosGrid_aluminio"></div>
       </div>
     </div>
   </div>
@@ -776,23 +864,39 @@
   <div class="wizard-step" id="step4" data-step="4">
     <div class="step-card">
       <div class="step-title">⚙️ Passo 4 — Posicionamento e Fixação</div>
-      <div class="instruction">
-        <span class="nao-e2-inline">Coloque a peça nos suportes/cunas, feche-os e fixe. <strong>Tire foto da peça posicionada e fixa</strong>.</span>
-        <span class="e2-only-inline">Coloque a peça nos suportes/cunas, feche-os e fixe. Grave o vídeo da Fase 2 que mostre o posicionamento e fixações.</span>
+
+      <!-- Declaração de número de suportes -->
+      <div style="background:#fff8e1;border:2px solid #fbc02d;border-radius:8px;padding:14px;margin-bottom:16px;">
+        <label style="display:block;font-weight:600;color:#5d4037;margin-bottom:8px;">
+          Quantos suportes / apoios / fixações tem esta embalagem?
+        </label>
+        <input type="number" id="numSuportes" min="1" max="50" placeholder="ex: 6" oninput="atualizarMinFotosSuportes()" style="width:100%;padding:10px;border:1px solid #fbc02d;border-radius:6px;font-size:1rem;">
+        <div style="font-size:0.82rem;color:#5d4037;margin-top:6px;">
+          Será exigida pelo menos 1 foto por cada suporte/apoio/fixação. Conte todos os pontos de fixação da peça.
+        </div>
       </div>
 
-      <div class="photo-step-block nao-e2">
-        <div class="photo-step-label">📸 Foto — Peça posicionada nos suportes</div>
+      <div class="photo-guide" id="photoGuide_step4" style="display:none;">
+        <div class="photo-guide-title">📋 Fotos a tirar neste passo:</div>
+        <ul class="photo-guide-list">
+          <li><strong>1 foto por cada suporte / apoio / fixação</strong> (mínimo: <span id="minSuportesText">—</span>)</li>
+          <li>Mostrar peça posicionada e fixa em cada ponto</li>
+        </ul>
+        <div class="photo-counter" id="counter_step4">📊 Tiradas: 0 de <span id="minSuportesCounter">—</span> obrigatórias</div>
+      </div>
+
+      <div class="photo-step-block">
+        <div class="photo-step-label">📸 Suportes / Apoios / Fixações</div>
         <div class="upload-row">
           <button class="btn-capture" id="btnFoto_posicao" onclick="capturarFoto('posicao')">📷 Tirar Foto</button>
         </div>
         <div class="photos-grid" id="photosGrid_posicao"></div>
       </div>
 
-      <!-- E2 Vídeo Fase 2 -->
+      <!-- Vídeo Fase 2 (opcional) -->
       <div class="e2-video-block e2-only" data-fase="intermedio">
         <div class="e2-video-header">
-          <span class="e2-badge">PROJECTO E2 — Aernnova</span>
+          <span class="e2-badge">VÍDEO E2 — Aernnova</span>
           <span class="e2-fase-num">FASE 2</span>
         </div>
         <div class="e2-video-title">🎥 Vídeo — Fase Intermédia</div>
@@ -809,30 +913,60 @@
   <div class="wizard-step" id="step5" data-step="5">
     <div class="step-card">
       <div class="step-title">📦 Passo 5 — Embalagem Final</div>
-      <div class="instruction">
-        Baixe a lona, aplique abraçadeiras/cintas, cole etiquetas. <span class="nao-e2-inline"><strong>Tire foto da embalagem completa</strong> e <strong>foto da etiqueta exterior</strong> bem visível.</span><span class="e2-only-inline">Grave o vídeo final que mostre a embalagem completa, com etiqueta exterior bem visível.</span>
+
+      <div class="photo-guide">
+        <div class="photo-guide-title">📋 Fotos a tirar neste passo (mínimo 5):</div>
+        <ul class="photo-guide-list">
+          <li><strong>4 fotos da caixa fechada:</strong> uma de cada lado (frente, traseira, lateral D, lateral E)</li>
+          <li><strong>1 foto do nº de série:</strong> bem visível na caixa</li>
+        </ul>
+        <div class="photo-counter" id="counter_step5">📊 Tiradas: 0 de 5 obrigatórias</div>
       </div>
 
-      <div class="photo-step-block nao-e2">
-        <div class="photo-step-label">📸 Foto — Embalagem completa (vista geral)</div>
+      <div class="photo-step-block">
+        <div class="photo-step-label">📸 Frente da caixa — 1 foto</div>
         <div class="upload-row">
-          <button class="btn-capture" id="btnFoto_finalGeral" onclick="capturarFoto('finalGeral')">📷 Tirar Foto</button>
+          <button class="btn-capture" id="btnFoto_frente" onclick="capturarFoto('frente')">📷 Tirar Foto</button>
         </div>
-        <div class="photos-grid" id="photosGrid_finalGeral"></div>
+        <div class="photos-grid" id="photosGrid_frente"></div>
       </div>
 
-      <div class="photo-step-block nao-e2">
-        <div class="photo-step-label">📸 Foto — Etiqueta exterior identificação</div>
+      <div class="photo-step-block">
+        <div class="photo-step-label">📸 Traseira da caixa — 1 foto</div>
         <div class="upload-row">
-          <button class="btn-capture" id="btnFoto_finalEtiqueta" onclick="capturarFoto('finalEtiqueta')">📷 Tirar Foto</button>
+          <button class="btn-capture" id="btnFoto_traseira" onclick="capturarFoto('traseira')">📷 Tirar Foto</button>
         </div>
-        <div class="photos-grid" id="photosGrid_finalEtiqueta"></div>
+        <div class="photos-grid" id="photosGrid_traseira"></div>
       </div>
 
-      <!-- E2 Vídeo Fase 3 -->
+      <div class="photo-step-block">
+        <div class="photo-step-label">📸 Lateral direita — 1 foto</div>
+        <div class="upload-row">
+          <button class="btn-capture" id="btnFoto_lateralD" onclick="capturarFoto('lateralD')">📷 Tirar Foto</button>
+        </div>
+        <div class="photos-grid" id="photosGrid_lateralD"></div>
+      </div>
+
+      <div class="photo-step-block">
+        <div class="photo-step-label">📸 Lateral esquerda — 1 foto</div>
+        <div class="upload-row">
+          <button class="btn-capture" id="btnFoto_lateralE" onclick="capturarFoto('lateralE')">📷 Tirar Foto</button>
+        </div>
+        <div class="photos-grid" id="photosGrid_lateralE"></div>
+      </div>
+
+      <div class="photo-step-block">
+        <div class="photo-step-label">📸 Nº de série da caixa — 1 foto</div>
+        <div class="upload-row">
+          <button class="btn-capture" id="btnFoto_serieFinal" onclick="capturarFoto('serieFinal')">📷 Tirar Foto</button>
+        </div>
+        <div class="photos-grid" id="photosGrid_serieFinal"></div>
+      </div>
+
+      <!-- Vídeo Fase 3 (opcional) -->
       <div class="e2-video-block e2-only" data-fase="final">
         <div class="e2-video-header">
-          <span class="e2-badge">PROJECTO E2 — Aernnova</span>
+          <span class="e2-badge">VÍDEO E2 — Aernnova</span>
           <span class="e2-fase-num">FASE 3</span>
         </div>
         <div class="e2-video-title">🎥 Vídeo — Conclusão do Embalamento</div>
@@ -871,14 +1005,14 @@
   <!-- ===== PASSO 7 (era 8): ASSINATURAS ===== -->
   <div class="wizard-step" id="step7" data-step="7">
     <div class="step-card">
-      <div class="step-title">✍️ Passo 7 — Assinaturas</div>
+      <div class="step-title">✍️ Passo 7 — Assinaturas (3 obrigatórias)</div>
       <div class="instruction">
-        Assine no canvas. Em seguida, peça ao colaborador da Aernnova para assinar no segundo canvas.
+        Os <strong>2 operadores Embaresa</strong> e o <strong>colaborador Aernnova</strong> têm de assinar no respectivo quadro.
       </div>
 
       <div class="sig-block">
         <div class="form-group">
-          <label>Operador Embaresa PT</label>
+          <label>Operador Embaresa 1</label>
           <div id="operadorEmbaresaSigDisplay" style="padding:12px;background:#f0f7ff;border-radius:8px;font-weight:600;color:#1a1a2e;">— Voltar ao Passo 1 e seleccionar —</div>
         </div>
         <canvas id="sigEmbaresa" class="sig-canvas"></canvas>
@@ -891,8 +1025,21 @@
 
       <div class="sig-block">
         <div class="form-group">
+          <label>Operador Embaresa 2</label>
+          <div id="operadorEmbaresa2SigDisplay" style="padding:12px;background:#f0f7ff;border-radius:8px;font-weight:600;color:#1a1a2e;">— Voltar ao Passo 1 e seleccionar —</div>
+        </div>
+        <canvas id="sigEmbaresa2" class="sig-canvas"></canvas>
+        <div class="sig-canvas-hint">👆 Assinar com o dedo dentro do quadro</div>
+        <div class="sig-actions">
+          <button class="btn-sig-clear" onclick="limparAssinatura('sigEmbaresa2')">Limpar</button>
+          <span class="sig-status" id="statusSigEmbaresa2">Por assinar</span>
+        </div>
+      </div>
+
+      <div class="sig-block">
+        <div class="form-group">
           <label>Colaborador Aernnova</label>
-          <input type="text" id="operadorCliente" placeholder="Nome do colaborador Aernnova">
+          <div id="operadorClienteSigDisplay" style="padding:12px;background:#fff8e1;border-radius:8px;font-weight:600;color:#5d4037;">— Voltar ao Passo 1 e preencher —</div>
         </div>
         <canvas id="sigCliente" class="sig-canvas"></canvas>
         <div class="sig-canvas-hint">👆 Assinar com o dedo dentro do quadro</div>
@@ -992,7 +1139,7 @@ const CONFIG = {
   powerAutomateEndpoint: '',  // Ex: 'https://prod-XX.westeurope.logic.azure.com:443/workflows/...'
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.4.4'
+  versao: '1.5.0'
 };
 // ============================================
 
@@ -1065,8 +1212,8 @@ const E2_FASES = [
 // ESTADO GLOBAL
 // ============================================
 const state = {
-  fotos: [], // {id, dataUrl, label, step} — step: 'serie'|'inicial'|'protecao'|'posicao'|'finalGeral'|'finalEtiqueta'
-  videos: [], // (mantido para compatibilidade — não usado no wizard)
+  fotos: [], // {id, dataUrl, label, step}
+  videos: [],
   videosE2: {
     inicio: { gravado: false, nomeFicheiro: '', tamanhoMB: 0, dataHora: '', dataHoraFmt: '', link: '', notas: '' },
     intermedio: { gravado: false, nomeFicheiro: '', tamanhoMB: 0, dataHora: '', dataHoraFmt: '', link: '', notas: '' },
@@ -1074,18 +1221,29 @@ const state = {
   },
   checklist: {},
   signatures: {},
+  cronometro: { inicio: null, fim: null },
   currentStep: 1
 };
 
 const TOTAL_STEPS = 8;
 const STEP_LABELS = ['Identificação', 'Estado Inicial', 'Protecção', 'Posicionamento', 'Embalagem Final', 'Checklist', 'Assinaturas', 'Envio'];
 const PHOTO_STEPS = {
-  serie: { label: 'Nº Série da caixa', step: 1, required: 1 },
-  inicial: { label: 'Estado Inicial do Produto', step: 2, required: 1 },
-  protecao: { label: 'Protecção Aplicada', step: 3, required: 1 },
-  posicao: { label: 'Posicionamento e Fixação', step: 4, required: 1 },
-  finalGeral: { label: 'Embalagem Completa', step: 5, required: 1 },
-  finalEtiqueta: { label: 'Etiqueta Exterior', step: 5, required: 1 }
+  // Passo 1
+  serie: { label: 'Nº Série da caixa (recomendada)', step: 1, required: 0 },
+  // Passo 2 — Estado Inicial (4 fotos: 2 caixa vazia + 2 peça)
+  caixaVazia: { label: 'Caixa vazia (frente + lateral)', step: 2, required: 2 },
+  pecaInicial: { label: 'Peça aeronáutica antes de embalar', step: 2, required: 2 },
+  // Passo 3 — Protecção (4 fotos: 2 bolha+dessec + 2 alumínio)
+  bolha: { label: 'Bolha + dessecantes', step: 3, required: 2 },
+  aluminio: { label: 'Saco alumínio aplicado', step: 3, required: 2 },
+  // Passo 4 — Posicionamento (variável, declarado pelo operador)
+  posicao: { label: 'Suportes / apoios / fixações', step: 4, required: 1 },
+  // Passo 5 — Embalagem Final (5 fotos: 4 lados + nº série)
+  frente: { label: 'Frente da caixa', step: 5, required: 1 },
+  traseira: { label: 'Traseira da caixa', step: 5, required: 1 },
+  lateralD: { label: 'Lateral direita', step: 5, required: 1 },
+  lateralE: { label: 'Lateral esquerda', step: 5, required: 1 },
+  serieFinal: { label: 'Nº de série da caixa', step: 5, required: 1 }
 };
 
 let nextPhotoId = 1;
@@ -1106,7 +1264,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderProgressBar();
   showStep(state.currentStep);
 
-  // Atualizar display do operador no Passo 7 (Assinaturas) sempre que mudar no Passo 1
+  // Atualizar displays dos operadores no Passo 7 sempre que mudar no Passo 1
   const opEmb = document.getElementById('operadorEmbaresa');
   const opEmbDisplay = document.getElementById('operadorEmbaresaSigDisplay');
   if (opEmb && opEmbDisplay) {
@@ -1114,6 +1272,32 @@ document.addEventListener('DOMContentLoaded', () => {
       opEmbDisplay.textContent = opEmb.value || '— Voltar ao Passo 1 e seleccionar —';
     });
   }
+  const opEmb2 = document.getElementById('operadorEmbaresa2');
+  const opEmb2Display = document.getElementById('operadorEmbaresa2SigDisplay');
+  if (opEmb2 && opEmb2Display) {
+    opEmb2.addEventListener('change', () => {
+      opEmb2Display.textContent = opEmb2.value || '— Voltar ao Passo 1 e seleccionar —';
+    });
+  }
+  const opCli = document.getElementById('operadorCliente');
+  const opCliDisplay = document.getElementById('operadorClienteSigDisplay');
+  if (opCli && opCliDisplay) {
+    opCli.addEventListener('input', () => {
+      opCliDisplay.textContent = opCli.value || '— Voltar ao Passo 1 e preencher —';
+    });
+  }
+
+  // Avisar se PWA Encomendas está disponível (só informativo)
+  setTimeout(() => {
+    try {
+      const raw = localStorage.getItem('encomendas_embaresa_v4');
+      if (raw) {
+        const data = JSON.parse(raw);
+        const n = (data.encomendas || []).length;
+        if (n > 0) console.log('[Encomendas] ' + n + ' encomendas disponíveis para auto-fill.');
+      }
+    } catch (e) {}
+  }, 500);
 
   // Inicializar funcionalidades PWA
   registarServiceWorker();
@@ -1123,7 +1307,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Auto-save robusto (IndexedDB) + tentativa de recuperação
   configurarAutoSave();
-  tentarRecuperarRascunho();  // pergunta ao utilizador se quer recuperar trabalho anterior
+  tentarRecuperarRascunho();
 });
 
 // ============================================
@@ -1234,12 +1418,14 @@ function showStep(n) {
   }
   indicator.textContent = `Passo ${n} de ${TOTAL_STEPS} — ${STEP_LABELS[n-1]}`;
 
-  // Quando entra no Passo 7 (Assinaturas), mostrar o nome do operador e inicializar canvas
+  // Quando entra no Passo 7 (Assinaturas), mostrar os nomes dos operadores e inicializar canvas
   if (n === 7) {
-    const display = document.getElementById('operadorEmbaresaSigDisplay');
-    const opVal = document.getElementById('operadorEmbaresa').value;
-    if (display) display.textContent = opVal || '— Voltar ao Passo 1 e seleccionar —';
-    // Inicializar canvas só agora — a esta altura os canvas estão visíveis e têm dimensões
+    const display1 = document.getElementById('operadorEmbaresaSigDisplay');
+    const display2 = document.getElementById('operadorEmbaresa2SigDisplay');
+    const displayCli = document.getElementById('operadorClienteSigDisplay');
+    if (display1) display1.textContent = document.getElementById('operadorEmbaresa').value || '— Voltar ao Passo 1 e seleccionar —';
+    if (display2) display2.textContent = document.getElementById('operadorEmbaresa2').value || '— Voltar ao Passo 1 e seleccionar —';
+    if (displayCli) displayCli.textContent = document.getElementById('operadorCliente').value || '— Voltar ao Passo 1 e preencher —';
     setTimeout(inicializarCanvasAssinaturas, 50);
   }
 
@@ -1268,36 +1454,52 @@ function validarPasso(n) {
     case 1:
       if (!d.planoNum) erros.push('Selecione um plano.');
       if (d.numSerie === '—') erros.push('Indique o nº de série da caixa (ex: 1663).');
-      if (!d.operadorEmbaresa || d.operadorEmbaresa === '—') erros.push('Indique o nome do operador.');
-      // Foto SN é recomendada mas não obrigatória
+      if (!d.operadorEmbaresa || d.operadorEmbaresa === '—') erros.push('Indique o nome do Operador Embaresa 1.');
+      if (!d.operadorEmbaresa2 || d.operadorEmbaresa2 === '—') erros.push('Indique o nome do Operador Embaresa 2.');
+      if (d.operadorEmbaresa && d.operadorEmbaresa2 && d.operadorEmbaresa === d.operadorEmbaresa2) {
+        erros.push('Os 2 Operadores Embaresa não podem ser a mesma pessoa.');
+      }
+      if (!d.operadorCliente || d.operadorCliente === '—') erros.push('Indique o nome do colaborador Aernnova.');
       break;
     case 2:
-      if (!d.isE2 && countFotos('inicial') < 1) erros.push('Tire pelo menos 1 foto do estado inicial.');
-      if (d.isE2 && !state.videosE2.inicio.gravado) erros.push('Grave o vídeo da Fase 1 (Início).');
+      // 4 fotos mínimas: 2 caixa vazia + 2 peça inicial
+      if (countFotos('caixaVazia') < 2) erros.push('Tire pelo menos 2 fotos da caixa vazia (frente + lateral).');
+      if (countFotos('pecaInicial') < 2) erros.push('Tire pelo menos 2 fotos da peça aeronáutica antes de embalar.');
+      if (d.requerVideos && !state.videosE2.inicio.gravado) erros.push('Grave o vídeo da Fase 1 (Início).');
       break;
     case 3:
-      if (countFotos('protecao') < 1) erros.push('Tire pelo menos 1 foto da protecção aplicada.');
+      // 4 fotos mínimas: 2 bolha+dessec + 2 alumínio
+      if (countFotos('bolha') < 2) erros.push('Tire pelo menos 2 fotos da peça com bolha + dessecantes.');
+      if (countFotos('aluminio') < 2) erros.push('Tire pelo menos 2 fotos da peça com saco de alumínio.');
       break;
     case 4:
-      if (!d.isE2 && countFotos('posicao') < 1) erros.push('Tire pelo menos 1 foto do posicionamento.');
-      if (d.isE2 && !state.videosE2.intermedio.gravado) erros.push('Grave o vídeo da Fase 2 (Intermédia).');
+      // Mínimo declarado pelo operador (1 foto por suporte)
+      const numSuportes = parseInt(d.numSuportes) || 0;
+      if (numSuportes < 1) erros.push('Indique quantos suportes/apoios/fixações tem esta embalagem.');
+      if (numSuportes >= 1 && countFotos('posicao') < numSuportes) {
+        erros.push(`Tire pelo menos ${numSuportes} fotos (1 por cada suporte/apoio/fixação). Tirou ${countFotos('posicao')}.`);
+      }
+      if (d.requerVideos && !state.videosE2.intermedio.gravado) erros.push('Grave o vídeo da Fase 2 (Intermédia).');
       break;
     case 5:
-      if (!d.isE2 && countFotos('finalGeral') < 1) erros.push('Tire pelo menos 1 foto da embalagem completa.');
-      if (!d.isE2 && countFotos('finalEtiqueta') < 1) erros.push('Tire pelo menos 1 foto da etiqueta exterior.');
-      if (d.isE2 && !state.videosE2.final.gravado) erros.push('Grave o vídeo da Fase 3 (Conclusão).');
+      // 5 fotos mínimas: 4 lados + nº série
+      if (countFotos('frente') < 1) erros.push('Tire 1 foto da frente da caixa.');
+      if (countFotos('traseira') < 1) erros.push('Tire 1 foto da traseira da caixa.');
+      if (countFotos('lateralD') < 1) erros.push('Tire 1 foto da lateral direita.');
+      if (countFotos('lateralE') < 1) erros.push('Tire 1 foto da lateral esquerda.');
+      if (countFotos('serieFinal') < 1) erros.push('Tire 1 foto do nº de série da caixa.');
+      if (d.requerVideos && !state.videosE2.final.gravado) erros.push('Grave o vídeo da Fase 3 (Conclusão).');
       break;
     case 6:
-      // Checklist obrigatório (já não há fracções no dropdown)
       const total = CHECKLIST_TEMPLATE.reduce((s, g) => s + g.items.length, 0);
       const done = Object.keys(state.checklist).length;
       if (done < total) erros.push(`Preencha todos os ${total} itens do checklist (faltam ${total - done}).`);
       break;
     case 7:
       const sigOK = (s) => s && typeof s === 'string' && s.length > 100 && s.startsWith('data:image/');
-      if (!sigOK(state.signatures.embaresa)) erros.push('Recolha a assinatura do operador Embaresa.');
+      if (!sigOK(state.signatures.embaresa)) erros.push('Recolha a assinatura do Operador Embaresa 1.');
+      if (!sigOK(state.signatures.embaresa2)) erros.push('Recolha a assinatura do Operador Embaresa 2.');
       if (!sigOK(state.signatures.cliente)) erros.push('Recolha a assinatura do colaborador Aernnova.');
-      if (!d.operadorCliente || d.operadorCliente === '—') erros.push('Indique o nome do colaborador Aernnova.');
       break;
   }
 
@@ -1305,6 +1507,13 @@ function validarPasso(n) {
     alert('⚠️ Antes de avançar:\n\n• ' + erros.join('\n• '));
     return false;
   }
+
+  // Iniciar cronómetro ao avançar do Passo 1 (entrada no Passo 2)
+  if (n === 1 && !state.cronometro.inicio) {
+    state.cronometro.inicio = new Date().toISOString();
+    if (typeof autoSave === 'function') autoSave();
+  }
+
   return true;
 }
 
@@ -1324,10 +1533,11 @@ function atualizarResumoFinal() {
       <li><strong>Plano:</strong> ${escapeHtml(d.planoNum)} — ${escapeHtml(d.planoNome)}</li>
       <li><strong>Cliente:</strong> ${escapeHtml(d.cliente)}</li>
       <li><strong>Encomenda:</strong> ${escapeHtml(d.numEncomenda)} • <strong>Série:</strong> ${escapeHtml(d.numSerie)}</li>
-      <li><strong>Data:</strong> ${d.dataFormatada} • <strong>Operador:</strong> ${escapeHtml(d.operadorEmbaresa)}</li>
+      <li><strong>Data:</strong> ${d.dataFormatada} • <strong>Início embalamento:</strong> ${escapeHtml(d.cronometroInicio)}</li>
+      <li><strong>Equipa:</strong> ${escapeHtml(d.operadorEmbaresa)} + ${escapeHtml(d.operadorEmbaresa2)} • <strong>Aernnova:</strong> ${escapeHtml(d.operadorCliente)}</li>
       <li><strong>Fotos:</strong> ${totalFotos} no total</li>
-      ${d.isE2 ? `<li><strong>Vídeos E2:</strong> ${fasesE2}/3 fases registadas</li>` : ''}
-      <li><strong>Assinaturas:</strong> ${state.signatures.embaresa ? '✓' : '✗'} Embaresa • ${state.signatures.cliente ? '✓' : '✗'} Aernnova</li>
+      ${d.requerVideos ? `<li><strong>Vídeos E2:</strong> ${fasesE2}/3 fases registadas</li>` : ''}
+      <li><strong>Assinaturas:</strong> ${state.signatures.embaresa ? '✓' : '✗'} Op1 • ${state.signatures.embaresa2 ? '✓' : '✗'} Op2 • ${state.signatures.cliente ? '✓' : '✗'} Aernnova</li>
     </ul>`;
 }
 
@@ -1356,26 +1566,103 @@ function onPlanoChange() {
       }
     }
 
-    // Esconder secções específicas de embalagem se for fração
-    document.querySelectorAll('.embalagem-only').forEach(el => {
-      el.classList.toggle('hidden', plano.tipo === 'FRACAO');
-    });
-
-    // Lógica E2 — mostrar bloco vídeo obrigatório se for um dos 4 planos E2
+    // Sugerir activar vídeos se for um dos 4 planos E2 conhecidos (mas só sugerir, não forçar)
     const isE2 = E2_PLANOS.includes(codigo);
-    document.querySelectorAll('.e2-only').forEach(el => el.classList.toggle('show', isE2));
-    document.querySelectorAll('.e2-only-inline').forEach(el => el.classList.toggle('show', isE2));
-    document.querySelectorAll('.nao-e2').forEach(el => el.classList.toggle('hidden', isE2));
-    document.querySelectorAll('.nao-e2-inline').forEach(el => el.classList.toggle('hidden', isE2));
-    if (isE2) renderVideosE2();
+    const cbVideos = document.getElementById('requerVideos');
+    if (isE2 && cbVideos && !cbVideos.dataset.touchedByUser) {
+      cbVideos.checked = true;
+      onVideosToggle();
+    }
   } else {
     infoDiv.classList.remove('visible');
-    document.querySelectorAll('.embalagem-only').forEach(el => el.classList.remove('hidden'));
-    document.querySelectorAll('.e2-only').forEach(el => el.classList.remove('show'));
-    document.querySelectorAll('.e2-only-inline').forEach(el => el.classList.remove('show'));
-    document.querySelectorAll('.nao-e2').forEach(el => el.classList.remove('hidden'));
-    document.querySelectorAll('.nao-e2-inline').forEach(el => el.classList.remove('hidden'));
   }
+}
+
+// Quando o checkbox "Esta embalagem requer vídeos" é tocado
+function onVideosToggle() {
+  const cb = document.getElementById('requerVideos');
+  if (!cb) return;
+  cb.dataset.touchedByUser = '1';
+  const ativo = cb.checked;
+  document.querySelectorAll('.e2-only').forEach(el => el.classList.toggle('show', ativo));
+  document.querySelectorAll('.e2-only-inline').forEach(el => el.classList.toggle('show', ativo));
+  if (ativo && typeof renderVideosE2 === 'function') renderVideosE2();
+  if (typeof autoSave === 'function') autoSave();
+}
+
+// ============================================
+// LOOKUP DE ENCOMENDAS (integração PWA Encomendas)
+// ============================================
+// Tenta ler o localStorage da PWA Encomendas (mesmo domínio github.io)
+// e devolve a encomenda associada à série EM, ou null.
+function procurarEncomendaPorSerie(numSerie) {
+  if (!numSerie) return null;
+  // Normalizar entrada (aceitar "1301", "EM 1301", "EM1301", etc.)
+  const serieNormalizada = ('EM' + numSerie.replace(/^EM\s*/i, '').trim()).toUpperCase();
+
+  try {
+    const raw = localStorage.getItem('encomendas_embaresa_v4');
+    if (!raw) {
+      console.log('[Encomendas] localStorage da PWA Encomendas está vazio.');
+      return null;
+    }
+    const data = JSON.parse(raw);
+    const encomendas = data.encomendas || [];
+    if (!encomendas.length) return null;
+
+    // Procurar por NumSerie (case-insensitive)
+    const found = encomendas.find(e => {
+      const ns = String(e.numSerie || '').trim().toUpperCase();
+      return ns === serieNormalizada;
+    });
+
+    if (found) {
+      return {
+        po: found.po,
+        pos: found.pos,
+        encomendaCompleta: found.po + (found.pos ? '/' + found.pos : ''),
+        caixa: found.caixa,
+        ligacao: found.ligacao,
+        tipologia: found.tipologia,
+        ot: found.ot,
+        ecode: found.ecode
+      };
+    }
+    return null;
+  } catch (e) {
+    console.error('[Encomendas] Erro a procurar encomenda:', e);
+    return null;
+  }
+}
+
+// Tenta preencher automaticamente a encomenda quando entra na app, se já houver série
+function tentarPreencherEncomendaAutomaticamente() {
+  const elSerie = document.getElementById('numSerie');
+  const elEncomenda = document.getElementById('numEncomenda');
+  if (!elSerie || !elEncomenda) return;
+
+  const serie = elSerie.value.trim();
+  if (!serie) return;
+  if (elEncomenda.value.trim()) return;  // Já tem valor — não sobrescrever
+
+  const enc = procurarEncomendaPorSerie(serie);
+  if (enc && enc.encomendaCompleta) {
+    elEncomenda.value = enc.encomendaCompleta;
+    mostrarToast('🔗 Encomenda preenchida automaticamente: ' + enc.encomendaCompleta);
+  }
+}
+
+function mostrarToast(msg) {
+  let toast = document.getElementById('appToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'appToast';
+    toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:white;padding:12px 20px;border-radius:8px;font-size:0.9rem;z-index:9999;opacity:0;transition:opacity 0.3s;box-shadow:0 4px 12px rgba(0,0,0,0.3);max-width:90%;text-align:center;';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.opacity = '1';
+  setTimeout(() => { toast.style.opacity = '0'; }, 3500);
 }
 
 // ============================================
@@ -1496,6 +1783,53 @@ function renderFotosStep(stepKey) {
       btn.innerHTML = `📷 Tirar mais foto <span style="opacity:0.85;font-weight:normal;">(${fotos.length} já tiradas)</span>`;
     }
   }
+
+  // Atualizar contador do passo (se existir)
+  atualizarContadorPasso(PHOTO_STEPS[stepKey] ? PHOTO_STEPS[stepKey].step : null);
+}
+
+// Atualiza o contador "X de Y obrigatórias" no topo de cada passo
+function atualizarContadorPasso(passoNum) {
+  if (!passoNum) return;
+  const counter = document.getElementById('counter_step' + passoNum);
+  if (!counter) return;
+
+  let total = 0, min = 0;
+
+  // Calcular tiradas e mínimo total para este passo
+  Object.entries(PHOTO_STEPS).forEach(([key, info]) => {
+    if (info.step === passoNum) {
+      total += state.fotos.filter(f => f.step === key).length;
+      // Para o passo 4, mínimo é dinâmico (numSuportes)
+      if (passoNum === 4) {
+        const numSup = parseInt(document.getElementById('numSuportes')?.value) || 0;
+        min = numSup;
+      } else {
+        min += info.required;
+      }
+    }
+  });
+
+  if (total >= min && min > 0) {
+    counter.classList.add('complete');
+    counter.textContent = `Tiradas: ${total} de ${min} obrigatórias`;
+  } else {
+    counter.classList.remove('complete');
+    counter.textContent = `📊 Tiradas: ${total} de ${min || '?'} obrigatórias`;
+  }
+}
+
+// Chamada quando muda o nº de suportes (Passo 4)
+function atualizarMinFotosSuportes() {
+  const num = parseInt(document.getElementById('numSuportes')?.value) || 0;
+  const guide = document.getElementById('photoGuide_step4');
+  const minTextEl = document.getElementById('minSuportesText');
+  const minCounterEl = document.getElementById('minSuportesCounter');
+  if (guide) guide.style.display = num > 0 ? 'block' : 'none';
+  if (minTextEl) minTextEl.textContent = num + ' fotos';
+  if (minCounterEl) minCounterEl.textContent = num;
+  atualizarContadorPasso(4);
+  if (typeof autoSave === 'function') autoSave();
 }
 
 function renderTodasFotos() {
@@ -1637,6 +1971,7 @@ function configurarBuscarVideos() {}
 function setupSignaturePads() {
   // Apenas regista os listeners, não dimensiona ainda (canvas está escondido)
   setupSignaturePad('sigEmbaresa', 'embaresa', 'statusSigEmbaresa');
+  setupSignaturePad('sigEmbaresa2', 'embaresa2', 'statusSigEmbaresa2');
   setupSignaturePad('sigCliente', 'cliente', 'statusSigCliente');
 }
 
@@ -1749,13 +2084,22 @@ function limparAssinatura(canvasId) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   canvas.classList.remove('signed');
-  const key = canvasId === 'sigEmbaresa' ? 'embaresa' : 'cliente';
-  delete state.signatures[key];
-  const statusId = canvasId === 'sigEmbaresa' ? 'statusSigEmbaresa' : 'statusSigCliente';
-  const status = document.getElementById(statusId);
-  status.textContent = 'Por assinar';
-  status.style.color = '#666';
-  atualizarTags();
+  // Mapear canvasId → key e statusId
+  const sigMap = {
+    'sigEmbaresa':  { key: 'embaresa',  statusId: 'statusSigEmbaresa' },
+    'sigEmbaresa2': { key: 'embaresa2', statusId: 'statusSigEmbaresa2' },
+    'sigCliente':   { key: 'cliente',   statusId: 'statusSigCliente' }
+  };
+  const m = sigMap[canvasId];
+  if (m) {
+    delete state.signatures[m.key];
+    const status = document.getElementById(m.statusId);
+    if (status) {
+      status.textContent = 'Por assinar';
+      status.style.color = '#666';
+    }
+  }
+  if (typeof atualizarTags === 'function') atualizarTags();
 }
 
 // ============================================
@@ -1772,6 +2116,18 @@ function atualizarPreviewSerie() {
   } else {
     preview.textContent = '✓ Será gravado como: ' + normalizado;
     preview.style.display = 'block';
+  }
+
+  // Tentar preencher encomenda automaticamente (apenas se campo encomenda estiver vazio)
+  const elEncomenda = document.getElementById('numEncomenda');
+  if (elEncomenda && !elEncomenda.value.trim()) {
+    const enc = procurarEncomendaPorSerie(input.value);
+    if (enc && enc.encomendaCompleta) {
+      elEncomenda.value = enc.encomendaCompleta;
+      elEncomenda.style.background = '#e8f5e9';
+      elEncomenda.style.borderColor = '#28a745';
+      mostrarToast('🔗 Encomenda encontrada: ' + enc.encomendaCompleta);
+    }
   }
 }
 
@@ -1798,7 +2154,28 @@ function getDados() {
   const dataFormatada = dataInput ? dataInput.split('-').reverse().join('/') : '';
   const codigo = v('planoNum', '');
   const planoInfo = PLANOS_DB[codigo] || { nome: '', tipo: 'EMBALAGEM' };
-  const isE2 = E2_PLANOS.includes(codigo);
+  const requerVideos = !!(document.getElementById('requerVideos') && document.getElementById('requerVideos').checked);
+  // isE2 mantém-se mas agora é "alias" para requerVideos
+  const isE2 = requerVideos;
+
+  // Cronómetro
+  const tInicio = state.cronometro && state.cronometro.inicio ? new Date(state.cronometro.inicio) : null;
+  const tFim = state.cronometro && state.cronometro.fim ? new Date(state.cronometro.fim) : null;
+  let tempoTotalFmt = '—';
+  let inicioFmt = '—';
+  let fimFmt = '—';
+  if (tInicio) inicioFmt = tInicio.toLocaleString('pt-PT');
+  if (tFim) fimFmt = tFim.toLocaleString('pt-PT');
+  if (tInicio && tFim) {
+    const diffMs = tFim - tInicio;
+    if (diffMs > 0) {
+      const totalSec = Math.floor(diffMs / 1000);
+      const horas = Math.floor(totalSec / 3600);
+      const mins = Math.floor((totalSec % 3600) / 60);
+      const segs = totalSec % 60;
+      tempoTotalFmt = (horas > 0 ? horas + 'h ' : '') + mins + 'min ' + segs + 's';
+    }
+  }
 
   return {
     cliente: v('cliente', ''),
@@ -1808,18 +2185,24 @@ function getDados() {
     planoNome: planoInfo.nome,
     planoTipo: planoInfo.tipo,
     isE2,
-    e2Label: isE2 ? E2_PLANO_LABELS[codigo] : '',
+    requerVideos,
+    e2Label: requerVideos && E2_PLANO_LABELS[codigo] ? E2_PLANO_LABELS[codigo] : '',
     dataFormatada,
     dataInput,
-    localVerif: '—',  // campo removido
+    localVerif: '—',
     comprimento: v('comprimento', ''),
     largura: v('largura', ''),
     altura: v('altura', ''),
+    numSuportes: v('numSuportes', ''),
     observacoes: v('observacoes', '—'),
     operadorEmbaresa: (v('operadorEmbaresa', '') || '').trim() || '—',
+    operadorEmbaresa2: (v('operadorEmbaresa2', '') || '').trim() || '—',
     operadorCliente: v('operadorCliente', '—'),
     emailCliente: v('emailCliente', ''),
-    emailCC: v('emailCC', '')
+    emailCC: v('emailCC', ''),
+    cronometroInicio: inicioFmt,
+    cronometroFim: fimFmt,
+    cronometroTotal: tempoTotalFmt
   };
 }
 
@@ -1911,12 +2294,16 @@ function gerarRelatorioHTML() {
 
   // Considerar assinatura válida apenas se for data URL com conteúdo significativo
   const sigValida = (s) => s && typeof s === 'string' && s.length > 100 && s.startsWith('data:image/');
+  const sigPlaceholder = '<div style="height:50px;border-bottom:1px solid #999;color:#999;font-style:italic;font-size:0.85rem;padding-top:25px;">(assinatura por recolher)</div>';
   const sigEmbaresaHTML = sigValida(state.signatures.embaresa)
-    ? `<img src="${state.signatures.embaresa}" style="max-width:280px; border-bottom:1px solid #999;">`
-    : '<div style="height:50px;border-bottom:1px solid #999;color:#999;font-style:italic;font-size:0.85rem;padding-top:25px;">(assinatura por recolher)</div>';
+    ? `<img src="${state.signatures.embaresa}" style="max-width:240px; border-bottom:1px solid #999;">`
+    : sigPlaceholder;
+  const sigEmbaresa2HTML = sigValida(state.signatures.embaresa2)
+    ? `<img src="${state.signatures.embaresa2}" style="max-width:240px; border-bottom:1px solid #999;">`
+    : sigPlaceholder;
   const sigClienteHTML = sigValida(state.signatures.cliente)
-    ? `<img src="${state.signatures.cliente}" style="max-width:280px; border-bottom:1px solid #999;">`
-    : '<div style="height:50px;border-bottom:1px solid #999;color:#999;font-style:italic;font-size:0.85rem;padding-top:25px;">(assinatura por recolher)</div>';
+    ? `<img src="${state.signatures.cliente}" style="max-width:240px; border-bottom:1px solid #999;">`
+    : sigPlaceholder;
 
   const html = `<!DOCTYPE html>
 <html lang="pt">
@@ -1950,18 +2337,24 @@ function gerarRelatorioHTML() {
   .rep-video-notes { font-size: 0.82rem; color: #444; margin-bottom: 6px; padding: 4px 8px; background: rgba(255,255,255,0.6); border-radius: 4px; }
   .rep-video-link { display: inline-block; padding: 6px 12px; background: #0078d4; color: #fff; text-decoration: none; border-radius: 4px; font-size: 0.85rem; font-weight: 600; }
   .rep-e2-banner { padding: 10px 14px; background: #fff3e0; border: 2px solid #ff9800; border-radius: 8px; margin-bottom: 12px; font-size: 0.88rem; color: #e65100; }
-  .rep-sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 10px; }
+  .rep-sig-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 10px; }
+  @media (max-width: 700px) { .rep-sig-grid { grid-template-columns: 1fr; } }
   .rep-sig { padding: 10px; border: 1px solid #ddd; border-radius: 8px; }
   .rep-sig-label { font-size: 0.75rem; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-  .rep-sig-name { font-weight: 600; margin-bottom: 8px; }
+  .rep-sig-name { font-weight: 600; margin-bottom: 8px; font-size: 0.88rem; }
   .rep-obs { padding: 10px 14px; background: #fafbfc; border-left: 4px solid #d0d7de; border-radius: 4px; white-space: pre-wrap; font-size: 0.9rem; }
+  .rep-cronometro { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 12px; background: #f0f7ff; border: 1px solid #00d4ff; border-radius: 8px; }
+  @media (max-width: 700px) { .rep-cronometro { grid-template-columns: 1fr; } }
+  .rep-cronometro-item { text-align: center; }
+  .rep-cronometro-label { font-size: 0.75rem; color: #666; text-transform: uppercase; }
+  .rep-cronometro-valor { font-weight: 700; color: #1a1a2e; margin-top: 4px; font-size: 0.95rem; }
   .rep-footer { margin-top: 30px; padding-top: 14px; border-top: 1px solid #ddd; text-align: center; font-size: 0.78rem; color: #888; }
   @media print { body { margin: 0; padding: 12px; } @page { margin: 1cm; } }
 </style>
 </head>
 <body>
   <h1>📦 Relatório de Embalamento</h1>
-  <div class="rep-header">Embaresa PT — Controlo de Qualidade • ${d.dataFormatada} • ${escapeHtml(d.localVerif)}</div>
+  <div class="rep-header">Embaresa PT — Controlo de Qualidade • ${d.dataFormatada}</div>
 
   <h2>1. Identificação</h2>
   <table class="rep-table">
@@ -1971,30 +2364,60 @@ function gerarRelatorioHTML() {
     <tr><td><strong>Plano Nº</strong></td><td>${escapeHtml(d.planoNum)}</td>
         <td><strong>Tipo</strong></td><td>${ehEmbalagem ? '📦 EMBALAGEM' : '📄 FRAÇÃO'}</td></tr>
     <tr><td><strong>Produto</strong></td><td colspan="3">${escapeHtml(d.planoNome)}</td></tr>
+    ${d.numSuportes ? `<tr><td><strong>Nº Suportes/Apoios/Fixações</strong></td><td colspan="3">${escapeHtml(d.numSuportes)}</td></tr>` : ''}
+    ${d.requerVideos ? `<tr><td><strong>Vídeos E2</strong></td><td colspan="3">✅ Requeridos pelo cliente</td></tr>` : ''}
   </table>
 
-  ${ehEmbalagem ? `<h2>2. Verificação</h2>${checklistHTML}` : ''}
+  <h2>2. Equipa de Embalamento</h2>
+  <table class="rep-table">
+    <tr><td style="width:30%;"><strong>Operador Embaresa 1</strong></td><td>${escapeHtml(d.operadorEmbaresa)}</td></tr>
+    <tr><td><strong>Operador Embaresa 2</strong></td><td>${escapeHtml(d.operadorEmbaresa2)}</td></tr>
+    <tr><td><strong>Colaborador Aernnova</strong></td><td>${escapeHtml(d.operadorCliente)}</td></tr>
+  </table>
+
+  <h2>3. Tempos de Embalamento</h2>
+  <div class="rep-cronometro">
+    <div class="rep-cronometro-item">
+      <div class="rep-cronometro-label">⏱️ Início</div>
+      <div class="rep-cronometro-valor">${escapeHtml(d.cronometroInicio)}</div>
+    </div>
+    <div class="rep-cronometro-item">
+      <div class="rep-cronometro-label">🏁 Fim</div>
+      <div class="rep-cronometro-valor">${escapeHtml(d.cronometroFim)}</div>
+    </div>
+    <div class="rep-cronometro-item">
+      <div class="rep-cronometro-label">⌛ Tempo Total</div>
+      <div class="rep-cronometro-valor">${escapeHtml(d.cronometroTotal)}</div>
+    </div>
+  </div>
+
+  ${ehEmbalagem ? `<h2>4. Verificação (Checklist)</h2>${checklistHTML}` : ''}
   ${dimensoesHTML}
 
-  <h2>4. Fotos</h2>
+  <h2>5. Fotos</h2>
   ${fotosHTML}
 
-  <h2>5. Vídeos</h2>
-  ${videosHTML}
+  ${d.requerVideos ? `<h2>6. Vídeos</h2>${videosHTML}` : ''}
 
-  <h2>6. Observações</h2>
+  <h2>${d.requerVideos ? '7' : '6'}. Observações</h2>
   <div class="rep-obs">${escapeHtml(d.observacoes)}</div>
 
-  <h2>7. Assinaturas</h2>
+  <h2>${d.requerVideos ? '8' : '7'}. Assinaturas</h2>
   <div class="rep-sig-grid">
     <div class="rep-sig">
-      <div class="rep-sig-label">Operador Embaresa PT</div>
+      <div class="rep-sig-label">Operador Embaresa 1</div>
       <div class="rep-sig-name">${escapeHtml(d.operadorEmbaresa)}</div>
       ${sigEmbaresaHTML}
       <div style="font-size:0.75rem; color:#666; margin-top:6px;">Data: ${d.dataFormatada}</div>
     </div>
     <div class="rep-sig">
-      <div class="rep-sig-label">Operador Cliente</div>
+      <div class="rep-sig-label">Operador Embaresa 2</div>
+      <div class="rep-sig-name">${escapeHtml(d.operadorEmbaresa2)}</div>
+      ${sigEmbaresa2HTML}
+      <div style="font-size:0.75rem; color:#666; margin-top:6px;">Data: ${d.dataFormatada}</div>
+    </div>
+    <div class="rep-sig">
+      <div class="rep-sig-label">Colaborador Aernnova</div>
       <div class="rep-sig-name">${escapeHtml(d.operadorCliente)}</div>
       ${sigClienteHTML}
       <div style="font-size:0.75rem; color:#666; margin-top:6px;">Data: ${d.dataFormatada}</div>
@@ -2004,9 +2427,43 @@ function gerarRelatorioHTML() {
   <div class="rep-footer">
     Relatório gerado em ${new Date().toLocaleString('pt-PT')} — Embaresa PT — Controlo de Qualidade
   </div>
+
+  <!-- DADOS EMBARESA QC v${CONFIG.versao} — bloco para re-importação na app -->
+  <script type="application/json" id="embaresa-qc-data">${escapeForScript(JSON.stringify({
+    versao: CONFIG.versao,
+    geradoEm: new Date().toISOString(),
+    formData: {
+      planoNum: d.planoNum,
+      cliente: d.cliente,
+      numEncomenda: d.numEncomenda === '—' ? '' : d.numEncomenda,
+      numSerie: d.numSerie === '—' ? '' : d.numSerie.replace(/^EM\s*/, ''),
+      dataEmbalamento: d.dataInput,
+      comprimento: d.comprimento,
+      largura: d.largura,
+      altura: d.altura,
+      numSuportes: d.numSuportes,
+      observacoes: d.observacoes === '—' ? '' : d.observacoes,
+      operadorEmbaresa: d.operadorEmbaresa === '—' ? '' : d.operadorEmbaresa,
+      operadorEmbaresa2: d.operadorEmbaresa2 === '—' ? '' : d.operadorEmbaresa2,
+      operadorCliente: d.operadorCliente === '—' ? '' : d.operadorCliente,
+      emailCliente: d.emailCliente,
+      emailCC: d.emailCC,
+      requerVideos: d.requerVideos
+    },
+    fotos: state.fotos,
+    videosE2: state.videosE2,
+    checklist: state.checklist,
+    signatures: state.signatures,
+    cronometro: state.cronometro
+  }))}<\/script>
 </body>
 </html>`;
   return html;
+}
+
+// Escape para JSON dentro de <script type="application/json"> (evitar quebrar o HTML)
+function escapeForScript(s) {
+  return s.replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\!--');
 }
 
 // ============================================
@@ -2164,6 +2621,11 @@ async function enviarRelatorio() {
   // Avisar se estiver offline
   if (!navigator.onLine) {
     if (!confirm('⚠️ Está sem ligação à internet.\n\nO relatório vai ser preparado mas não poderá ser enviado até voltar a ter rede.\n\nContinuar mesmo assim?')) return;
+  }
+
+  // Marcar fim do cronómetro (se ainda não estiver marcado)
+  if (state.cronometro && !state.cronometro.fim) {
+    state.cronometro.fim = new Date().toISOString();
   }
 
   const d = getDados();
@@ -2359,7 +2821,9 @@ async function apagarRascunhoIDB() {
 function recolherEstadoCompleto() {
   const v = (id, def = '') => {
     const el = document.getElementById(id);
-    return el ? (el.value || def) : def;
+    if (!el) return def;
+    if (el.type === 'checkbox') return el.checked;
+    return el.value || def;
   };
   return {
     versao: CONFIG.versao,
@@ -2374,16 +2838,20 @@ function recolherEstadoCompleto() {
       comprimento: v('comprimento'),
       largura: v('largura'),
       altura: v('altura'),
+      numSuportes: v('numSuportes'),
       observacoes: v('observacoes'),
       operadorEmbaresa: v('operadorEmbaresa'),
+      operadorEmbaresa2: v('operadorEmbaresa2'),
       operadorCliente: v('operadorCliente'),
       emailCliente: v('emailCliente'),
-      emailCC: v('emailCC')
+      emailCC: v('emailCC'),
+      requerVideos: v('requerVideos', false)
     },
-    fotos: state.fotos,           // inclui dataUrls comprimidos
+    fotos: state.fotos,
     videosE2: state.videosE2,
     checklist: state.checklist,
-    signatures: state.signatures  // inclui dataUrls das assinaturas
+    signatures: state.signatures,
+    cronometro: state.cronometro
   };
 }
 
@@ -2503,7 +2971,12 @@ async function tentarRecuperarRascunho() {
   Object.entries(r.formData || {}).forEach(([k, val]) => {
     if (val === undefined) return;
     const el = document.getElementById(k);
-    if (el) el.value = val;
+    if (!el) return;
+    if (el.type === 'checkbox') {
+      el.checked = !!val;
+    } else {
+      el.value = val;
+    }
   });
   state.fotos = r.fotos || [];
   if (r.fotos && r.fotos.length > 0) {
@@ -2512,9 +2985,13 @@ async function tentarRecuperarRascunho() {
   state.checklist = r.checklist || {};
   if (r.videosE2) state.videosE2 = r.videosE2;
   state.signatures = r.signatures || {};
+  if (r.cronometro) state.cronometro = r.cronometro;
+  if (!state.cronometro) state.cronometro = { inicio: null, fim: null };
 
-  // Disparar onPlanoChange para reactivar lógica E2
+  // Disparar onPlanoChange e onVideosToggle para reactivar lógica
   onPlanoChange();
+  if (typeof onVideosToggle === 'function') onVideosToggle();
+  if (typeof atualizarMinFotosSuportes === 'function') atualizarMinFotosSuportes();
 
   // Re-aplicar checklist visual
   Object.entries(state.checklist).forEach(([key, value]) => {
@@ -2526,8 +3003,11 @@ async function tentarRecuperarRascunho() {
       if (buttons[idx]) buttons[idx].classList.add('sel-' + value);
     }
   });
-  renderVideosE2();
+  if (typeof renderVideosE2 === 'function') renderVideosE2();
   renderTodasFotos();
+
+  // Atualizar contadores
+  [2,3,4,5].forEach(p => atualizarContadorPasso(p));
 
   // Saltar para o passo onde o operador estava
   if (r.currentStep && r.currentStep > 1) {
@@ -2557,14 +3037,167 @@ function carregarRascunho() {
 // ============================================
 // NOVO RELATÓRIO
 // ============================================
+// ============================================
+// MODO REVISÃO — Abrir relatório existente para edição
+// ============================================
+// Permite que a Sónia (QC) abra um relatório recebido por email,
+// edite campos como Nº Encomenda, e gere uma versão actualizada.
+
+function abrirRelatorioExistente() {
+  // Criar input file dinâmico
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.html,text/html';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      try {
+        const text = await file.text();
+        const dados = extrairDadosDoRelatorio(text);
+        if (!dados) {
+          alert('❌ Este ficheiro não parece ser um relatório válido da app Embaresa QC.\n\nVerifique se está a abrir o ficheiro .html correcto.');
+          document.body.removeChild(input);
+          return;
+        }
+        if (!confirm(`📂 Relatório encontrado:\n\n• Plano: ${dados.formData.planoNum || '—'}\n• Série: EM ${dados.formData.numSerie || '—'}\n• Operador: ${dados.formData.operadorEmbaresa || '—'}\n• Fotos: ${(dados.fotos || []).length}\n• Versão: ${dados.versao || '—'}\n\nCarregar para edição? Os dados actuais serão substituídos.`)) {
+          document.body.removeChild(input);
+          return;
+        }
+        carregarDadosRelatorio(dados);
+        // Limpar rascunho IDB para evitar conflito na próxima abertura
+        if (typeof apagarRascunhoIDB === 'function') apagarRascunhoIDB();
+        // Mostrar indicador de modo edição
+        mostrarBannerModoEdicao(file.name);
+      } catch (err) {
+        console.error('Erro ao abrir relatório:', err);
+        alert('❌ Erro ao ler o ficheiro:\n\n' + err.message);
+      }
+    }
+    document.body.removeChild(input);
+  };
+  input.click();
+}
+
+function extrairDadosDoRelatorio(html) {
+  // Procurar o bloco <script type="application/json" id="embaresa-qc-data">
+  const match = html.match(/<script\s+type=["']application\/json["']\s+id=["']embaresa-qc-data["']>([\s\S]*?)<\/script>/i);
+  if (!match) return null;
+  try {
+    // Reverter o escape feito ao gerar
+    const json = match[1].replace(/<\\\/script/gi, '</script').replace(/<\\!--/g, '<!--');
+    return JSON.parse(json);
+  } catch (e) {
+    console.error('Falha a parse JSON:', e);
+    return null;
+  }
+}
+
+function carregarDadosRelatorio(dados) {
+  // Restaurar campos de formulário
+  if (dados.formData) {
+    Object.entries(dados.formData).forEach(([k, v]) => {
+      if (v === undefined || v === null) return;
+      const el = document.getElementById(k);
+      if (!el) return;
+      // Tratar checkbox de forma especial
+      if (el.type === 'checkbox') {
+        el.checked = !!v;
+      } else {
+        el.value = v;
+      }
+    });
+    // Aplicar estado do checkbox de vídeos
+    if (typeof onVideosToggle === 'function') onVideosToggle();
+  }
+
+  // Restaurar fotos
+  state.fotos = dados.fotos || [];
+  if (state.fotos.length > 0) {
+    nextPhotoId = Math.max(...state.fotos.map(f => f.id)) + 1;
+  }
+
+  // Restaurar checklist
+  state.checklist = dados.checklist || {};
+
+  // Restaurar vídeos E2
+  if (dados.videosE2) state.videosE2 = dados.videosE2;
+
+  // Restaurar assinaturas
+  state.signatures = dados.signatures || {};
+
+  // Restaurar cronómetro (se existir)
+  if (dados.cronometro) state.cronometro = dados.cronometro;
+  // Garantir que existe
+  if (!state.cronometro) state.cronometro = { inicio: null, fim: null };
+
+  // Disparar lógica de plano (sugestão de E2, dimensões, etc.)
+  onPlanoChange();
+  atualizarPreviewSerie();
+  // Atualizar mínimo de fotos para o Passo 4 (numSuportes)
+  if (typeof atualizarMinFotosSuportes === 'function') atualizarMinFotosSuportes();
+
+  // Re-aplicar checklist visual
+  Object.entries(state.checklist).forEach(([key, value]) => {
+    const item = document.querySelector(`.check-item[data-key="${CSS.escape(key)}"]`);
+    if (item) {
+      const buttons = item.querySelectorAll('.check-options button');
+      buttons.forEach(b => b.classList.remove('sel-ok','sel-nok','sel-na'));
+      const idx = value === 'ok' ? 0 : value === 'nok' ? 1 : 2;
+      if (buttons[idx]) buttons[idx].classList.add('sel-' + value);
+    }
+  });
+
+  // Re-renderizar fotos e vídeos E2
+  renderTodasFotos();
+  if (typeof renderVideosE2 === 'function') renderVideosE2();
+
+  // Atualizar contadores
+  [2,3,4,5].forEach(p => atualizarContadorPasso(p));
+
+  // Voltar ao primeiro passo (para a Sónia poder rever tudo)
+  showStep(1);
+
+  // Toast confirmar
+  setTimeout(() => {
+    const ind = document.getElementById('autoSaveIndicador');
+    if (ind) {
+      ind.textContent = '📂 Relatório carregado — pode editar';
+      ind.classList.add('show');
+      setTimeout(() => ind.classList.remove('show'), 3000);
+    }
+  }, 200);
+}
+
+function mostrarBannerModoEdicao(nomeFicheiro) {
+  let banner = document.getElementById('bannerModoEdicao');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'bannerModoEdicao';
+    banner.style.cssText = 'background:linear-gradient(135deg,#fff3e0,#ffe0b2);color:#e65100;padding:10px 16px;border-bottom:2px solid #ff9800;text-align:center;font-size:0.9rem;font-weight:600;position:sticky;top:0;z-index:100;';
+    const container = document.querySelector('.container') || document.body;
+    container.insertBefore(banner, container.firstChild);
+  }
+  banner.innerHTML = `📝 <strong>Modo Revisão</strong> — a editar relatório recebido (<code style="font-size:0.85rem;background:rgba(255,255,255,0.6);padding:2px 6px;border-radius:3px;">${escapeHtml(nomeFicheiro)}</code>) — quando concluir, gere o relatório actualizado no Passo 8`;
+}
+
 function novoRelatorio() {
   if (!confirm('Limpar todos os dados e começar um relatório novo?')) return;
+  // Remover banner do Modo Revisão se existir
+  const banner = document.getElementById('bannerModoEdicao');
+  if (banner) banner.remove();
   // Limpar inputs
   document.querySelectorAll('input, select, textarea').forEach(el => {
     if (el.type === 'file') return;
-    if (el.tagName === 'SELECT') el.selectedIndex = 0;
+    if (el.type === 'checkbox') el.checked = false;
+    else if (el.tagName === 'SELECT') el.selectedIndex = 0;
     else el.value = '';
   });
+  // Limpar marca de "tocado" no checkbox de vídeos
+  const cbVid = document.getElementById('requerVideos');
+  if (cbVid) delete cbVid.dataset.touchedByUser;
   document.getElementById('dataEmbalamento').valueAsDate = new Date();
   // Limpar estado
   state.fotos = [];
@@ -2576,13 +3209,21 @@ function novoRelatorio() {
   };
   state.checklist = {};
   state.signatures = {};
+  state.cronometro = { inicio: null, fim: null };
   state.currentStep = 1;
   // Limpar UI das fotos por passo
   renderTodasFotos();
   renderVideosE2();
   document.querySelectorAll('.check-options button').forEach(b => b.classList.remove('sel-ok','sel-nok','sel-na'));
   limparAssinatura('sigEmbaresa');
+  limparAssinatura('sigEmbaresa2');
   limparAssinatura('sigCliente');
+  // Restaurar background do campo encomenda
+  const elEnc = document.getElementById('numEncomenda');
+  if (elEnc) {
+    elEnc.style.background = '';
+    elEnc.style.borderColor = '';
+  }
   onPlanoChange();
   showStep(1);
   localStorage.removeItem('relatorioEmbalamentoRascunho');
