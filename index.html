@@ -658,6 +658,11 @@
     <button class="btn btn-sm" id="btnInstalarPWA" style="background:linear-gradient(135deg,#28a745,#1e7e34);color:#fff;display:none;">📲 Instalar</button>
   </div>
 
+  <!-- Cronómetro em tempo real (visível quando embalamento iniciado) -->
+  <div id="liveTimerBar" style="display:none;background:linear-gradient(135deg,#0d47a1,#1976d2);color:white;padding:10px 16px;text-align:center;font-weight:600;font-size:0.95rem;border-radius:0 0 8px 8px;margin-bottom:12px;box-shadow:0 2px 8px rgba(13,71,161,0.25);">
+    ⏱️ <span id="liveTimerLabel">A embalar há</span> <span id="liveTimerValue" style="font-size:1.1rem;font-family:monospace;">00:00:00</span>
+  </div>
+
   <!-- ===== PASSO 1: IDENTIFICAÇÃO ===== -->
   <div class="wizard-step active" id="step1" data-step="1">
     <div class="step-card">
@@ -739,7 +744,7 @@
       </div>
 
       <div class="form-row">
-        <div class="form-group">
+        <div class="form-group full">
           <label>Operador Embaresa 2</label>
           <select id="operadorEmbaresa2">
             <option value="">— Seleccionar operador —</option>
@@ -751,10 +756,6 @@
             <option value="Valdir Tavares">Valdir Tavares</option>
             <option value="William Chaves Inaba">William Chaves Inaba</option>
           </select>
-        </div>
-        <div class="form-group">
-          <label>Cliente Aernnova (nome)</label>
-          <input type="text" id="operadorCliente" placeholder="Nome do representante Aernnova">
         </div>
       </div>
 
@@ -1039,7 +1040,7 @@
       <div class="sig-block">
         <div class="form-group">
           <label>Colaborador Aernnova</label>
-          <div id="operadorClienteSigDisplay" style="padding:12px;background:#fff8e1;border-radius:8px;font-weight:600;color:#5d4037;">— Voltar ao Passo 1 e preencher —</div>
+          <input type="text" id="operadorCliente" placeholder="Nome do representante Aernnova" oninput="atualizarDisplayCliente()">
         </div>
         <canvas id="sigCliente" class="sig-canvas"></canvas>
         <div class="sig-canvas-hint">👆 Assinar com o dedo dentro do quadro</div>
@@ -1139,7 +1140,7 @@ const CONFIG = {
   powerAutomateEndpoint: '',  // Ex: 'https://prod-XX.westeurope.logic.azure.com:443/workflows/...'
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.5.0'
+  versao: '1.5.1'
 };
 // ============================================
 
@@ -1279,13 +1280,6 @@ document.addEventListener('DOMContentLoaded', () => {
       opEmb2Display.textContent = opEmb2.value || '— Voltar ao Passo 1 e seleccionar —';
     });
   }
-  const opCli = document.getElementById('operadorCliente');
-  const opCliDisplay = document.getElementById('operadorClienteSigDisplay');
-  if (opCli && opCliDisplay) {
-    opCli.addEventListener('input', () => {
-      opCliDisplay.textContent = opCli.value || '— Voltar ao Passo 1 e preencher —';
-    });
-  }
 
   // Avisar se PWA Encomendas está disponível (só informativo)
   setTimeout(() => {
@@ -1422,10 +1416,8 @@ function showStep(n) {
   if (n === 7) {
     const display1 = document.getElementById('operadorEmbaresaSigDisplay');
     const display2 = document.getElementById('operadorEmbaresa2SigDisplay');
-    const displayCli = document.getElementById('operadorClienteSigDisplay');
     if (display1) display1.textContent = document.getElementById('operadorEmbaresa').value || '— Voltar ao Passo 1 e seleccionar —';
     if (display2) display2.textContent = document.getElementById('operadorEmbaresa2').value || '— Voltar ao Passo 1 e seleccionar —';
-    if (displayCli) displayCli.textContent = document.getElementById('operadorCliente').value || '— Voltar ao Passo 1 e preencher —';
     setTimeout(inicializarCanvasAssinaturas, 50);
   }
 
@@ -1459,7 +1451,6 @@ function validarPasso(n) {
       if (d.operadorEmbaresa && d.operadorEmbaresa2 && d.operadorEmbaresa === d.operadorEmbaresa2) {
         erros.push('Os 2 Operadores Embaresa não podem ser a mesma pessoa.');
       }
-      if (!d.operadorCliente || d.operadorCliente === '—') erros.push('Indique o nome do colaborador Aernnova.');
       break;
     case 2:
       // 4 fotos mínimas: 2 caixa vazia + 2 peça inicial
@@ -1497,6 +1488,7 @@ function validarPasso(n) {
       break;
     case 7:
       const sigOK = (s) => s && typeof s === 'string' && s.length > 100 && s.startsWith('data:image/');
+      if (!d.operadorCliente || d.operadorCliente === '—') erros.push('Indique o nome do colaborador Aernnova.');
       if (!sigOK(state.signatures.embaresa)) erros.push('Recolha a assinatura do Operador Embaresa 1.');
       if (!sigOK(state.signatures.embaresa2)) erros.push('Recolha a assinatura do Operador Embaresa 2.');
       if (!sigOK(state.signatures.cliente)) erros.push('Recolha a assinatura do colaborador Aernnova.');
@@ -1512,6 +1504,7 @@ function validarPasso(n) {
   if (n === 1 && !state.cronometro.inicio) {
     state.cronometro.inicio = new Date().toISOString();
     if (typeof autoSave === 'function') autoSave();
+    if (typeof iniciarLiveTimer === 'function') iniciarLiveTimer();
   }
 
   return true;
@@ -1663,6 +1656,56 @@ function mostrarToast(msg) {
   toast.textContent = msg;
   toast.style.opacity = '1';
   setTimeout(() => { toast.style.opacity = '0'; }, 3500);
+}
+
+// Função chamada quando o nome do Cliente Aernnova é editado no Passo 7
+function atualizarDisplayCliente() {
+  // Apenas dispara auto-save (campo é input directo)
+  if (typeof autoSave === 'function') autoSave();
+}
+
+// ============================================
+// CRONÓMETRO LIVE (mostra tempo a correr no topo da app)
+// ============================================
+let liveTimerInterval = null;
+
+function iniciarLiveTimer() {
+  // Só arranca se houver início definido e ainda sem fim
+  if (!state.cronometro || !state.cronometro.inicio) return;
+  if (state.cronometro.fim) return;  // já parou
+
+  const bar = document.getElementById('liveTimerBar');
+  if (!bar) return;
+  bar.style.display = 'block';
+
+  // Limpar intervalo anterior se existir
+  if (liveTimerInterval) clearInterval(liveTimerInterval);
+
+  function tick() {
+    const valor = document.getElementById('liveTimerValue');
+    if (!valor) return;
+    const inicio = new Date(state.cronometro.inicio).getTime();
+    const agora = Date.now();
+    const diffSec = Math.max(0, Math.floor((agora - inicio) / 1000));
+    const h = Math.floor(diffSec / 3600);
+    const m = Math.floor((diffSec % 3600) / 60);
+    const s = diffSec % 60;
+    valor.textContent =
+      String(h).padStart(2, '0') + ':' +
+      String(m).padStart(2, '0') + ':' +
+      String(s).padStart(2, '0');
+  }
+  tick();  // primeira atualização imediata
+  liveTimerInterval = setInterval(tick, 1000);
+}
+
+function pararLiveTimer() {
+  if (liveTimerInterval) {
+    clearInterval(liveTimerInterval);
+    liveTimerInterval = null;
+  }
+  const bar = document.getElementById('liveTimerBar');
+  if (bar) bar.style.display = 'none';
 }
 
 // ============================================
@@ -2463,7 +2506,10 @@ function gerarRelatorioHTML() {
 
 // Escape para JSON dentro de <script type="application/json"> (evitar quebrar o HTML)
 function escapeForScript(s) {
-  return s.replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\!--');
+  // Construir os literais "perigosos" sem deixar literais <\/script> aparecerem no fonte
+  const closeScript = '<' + '/' + 'script';
+  const openComment = '<' + '!' + '--';
+  return s.split(closeScript).join('<\\/script').split(openComment).join('<\\!--');
 }
 
 // ============================================
@@ -2627,6 +2673,8 @@ async function enviarRelatorio() {
   if (state.cronometro && !state.cronometro.fim) {
     state.cronometro.fim = new Date().toISOString();
   }
+  // Parar timer live
+  if (typeof pararLiveTimer === 'function') pararLiveTimer();
 
   const d = getDados();
   const html = gerarRelatorioHTML();
@@ -2988,6 +3036,11 @@ async function tentarRecuperarRascunho() {
   if (r.cronometro) state.cronometro = r.cronometro;
   if (!state.cronometro) state.cronometro = { inicio: null, fim: null };
 
+  // Se cronómetro tinha início mas não fim, retomar timer live
+  if (state.cronometro.inicio && !state.cronometro.fim) {
+    setTimeout(iniciarLiveTimer, 100);
+  }
+
   // Disparar onPlanoChange e onVideosToggle para reactivar lógica
   onPlanoChange();
   if (typeof onVideosToggle === 'function') onVideosToggle();
@@ -3082,12 +3135,15 @@ function abrirRelatorioExistente() {
 }
 
 function extrairDadosDoRelatorio(html) {
+  // Construir os literais "perigosos" sem deixar literais <\/script> aparecerem no fonte
+  const closeScript = '<' + '/' + 'script';
   // Procurar o bloco <script type="application/json" id="embaresa-qc-data">
-  const match = html.match(/<script\s+type=["']application\/json["']\s+id=["']embaresa-qc-data["']>([\s\S]*?)<\/script>/i);
+  const regex = new RegExp('<script\\s+type=["\']application\\/json["\']\\s+id=["\']embaresa-qc-data["\']>([\\s\\S]*?)' + closeScript + '>', 'i');
+  const match = html.match(regex);
   if (!match) return null;
   try {
     // Reverter o escape feito ao gerar
-    const json = match[1].replace(/<\\\/script/gi, '</script').replace(/<\\!--/g, '<!--');
+    const json = match[1].split('<\\/script').join(closeScript).split('<\\!--').join('<' + '!--');
     return JSON.parse(json);
   } catch (e) {
     console.error('Falha a parse JSON:', e);
@@ -3132,6 +3188,8 @@ function carregarDadosRelatorio(dados) {
   if (dados.cronometro) state.cronometro = dados.cronometro;
   // Garantir que existe
   if (!state.cronometro) state.cronometro = { inicio: null, fim: null };
+  // Em Modo Revisão, parar timer live (relatório já está finalizado)
+  if (typeof pararLiveTimer === 'function') pararLiveTimer();
 
   // Disparar lógica de plano (sugestão de E2, dimensões, etc.)
   onPlanoChange();
@@ -3211,6 +3269,8 @@ function novoRelatorio() {
   state.signatures = {};
   state.cronometro = { inicio: null, fim: null };
   state.currentStep = 1;
+  // Parar timer live
+  if (typeof pararLiveTimer === 'function') pararLiveTimer();
   // Limpar UI das fotos por passo
   renderTodasFotos();
   renderVideosE2();
