@@ -1140,7 +1140,7 @@ const CONFIG = {
   powerAutomateEndpoint: '',  // Ex: 'https://prod-XX.westeurope.logic.azure.com:443/workflows/...'
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.5.1'
+  versao: '1.5.2'
 };
 // ============================================
 
@@ -1405,6 +1405,15 @@ function showStep(n) {
   if (n === TOTAL_STEPS) {
     btnAvancar.style.display = 'none';
     btnEnviar.style.display = 'inline-block';
+    // Em Modo Revisão, mudar texto e cor do botão
+    const isModoRevisao = !!document.getElementById('bannerModoEdicao');
+    if (isModoRevisao) {
+      btnEnviar.innerHTML = '📧 Reencaminhar à Aernnova';
+      btnEnviar.style.background = 'linear-gradient(135deg, #ff9800, #f57c00)';
+    } else {
+      btnEnviar.innerHTML = '📤 Enviar Relatório';
+      btnEnviar.style.background = '';
+    }
     atualizarResumoFinal();
   } else {
     btnAvancar.style.display = 'inline-block';
@@ -2664,6 +2673,10 @@ function previsualizarRelatorio() {
 async function enviarRelatorio() {
   if (!validarBasico(false)) return;
 
+  // Detectar se está em Modo Revisão (Sónia a editar relatório recebido)
+  const banner = document.getElementById('bannerModoEdicao');
+  const isModoRevisao = !!banner;
+
   // Avisar se estiver offline
   if (!navigator.onLine) {
     if (!confirm('⚠️ Está sem ligação à internet.\n\nO relatório vai ser preparado mas não poderá ser enviado até voltar a ter rede.\n\nContinuar mesmo assim?')) return;
@@ -2680,18 +2693,30 @@ async function enviarRelatorio() {
   const html = gerarRelatorioHTML();
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
 
-  // Nome do ficheiro: Relatorio_EM-1663_230324R2_2026-04-28.html
+  // Nome do ficheiro
   const dataFile = d.dataInput || new Date().toISOString().split('T')[0];
   const snFile = (d.numSerie || 'novo').replace(/\s+/g,'-').replace(/[^a-zA-Z0-9-]/g,'');
   const planoFile = (d.planoNum || '').replace(/\s+/g,'_');
-  const fileName = `Relatorio_${snFile}_${planoFile}_${dataFile}.html`;
+  const fileName = (isModoRevisao ? 'Relatorio_REVISTO_' : 'Relatorio_')
+                 + `${snFile}_${planoFile}_${dataFile}.html`;
   const file = new File([blob], fileName, { type: 'text/html' });
 
-  // Assunto e corpo do email — destinatário é Sónia, que reencaminha à Aernnova
-  const tagE2 = d.isE2 ? ' [E2]' : '';
+  // ============================================
+  // MODO REVISÃO (Sónia no portatil → reencaminhar Aernnova)
+  // ============================================
+  if (isModoRevisao) {
+    return enviarRelatorioModoRevisao(blob, file, fileName, d);
+  }
+
+  // ============================================
+  // MODO TELEMÓVEL (operador → enviar para Sónia)
+  // ============================================
+  const tagE2 = d.requerVideos ? ' [E2]' : '';
   const subject = `Relatório Embalamento${tagE2} — ${d.numSerie} — ${d.planoNum}`;
 
-  const corpoE2 = d.isE2 ? `\n\n📹 PROJECTO E2 — Registo vídeo das 3 fases (vídeos no OneDrive Embaresa):
+  const corpoE2 = d.requerVideos ? `
+
+📹 Vídeos do embalamento:
 • Fase 1 (Início): ${state.videosE2.inicio.gravado ? '✓ ' + state.videosE2.inicio.nomeFicheiro + ' — ' + state.videosE2.inicio.dataHoraFmt : '⚠ em falta'}
 • Fase 2 (Intermédia): ${state.videosE2.intermedio.gravado ? '✓ ' + state.videosE2.intermedio.nomeFicheiro + ' — ' + state.videosE2.intermedio.dataHoraFmt : '⚠ em falta'}
 • Fase 3 (Conclusão): ${state.videosE2.final.gravado ? '✓ ' + state.videosE2.final.nomeFicheiro + ' — ' + state.videosE2.final.dataHoraFmt : '⚠ em falta'}` : '';
@@ -2704,15 +2729,17 @@ Encomenda: ${d.numEncomenda}
 Nº Série: ${d.numSerie}
 Plano: ${d.planoNum} — ${d.planoNome}
 Data: ${d.dataFormatada}
-Operador: ${d.operadorEmbaresa}${corpoE2}
+Operador 1: ${d.operadorEmbaresa}
+Operador 2: ${d.operadorEmbaresa2}${corpoE2}
 
 (Para reencaminhar à Aernnova após validação.)
 
 Cumprimentos,
 ${d.operadorEmbaresa}
-Embaresa PT — Embalamento`;
+Embaresa PT — Embalamento
+`;
 
-  // Tentar Web Share API com ficheiro (iOS Safari 15+, Android Chrome 89+)
+  // Tentar Web Share API com ficheiro (Android Chrome / iOS Safari)
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
       await navigator.share({
@@ -2720,17 +2747,15 @@ Embaresa PT — Embalamento`;
         text: body,
         files: [file]
       });
-      mostrarSucesso('Partilha aberta. Escolha "Outlook" ou "Mail" e clique em Enviar.');
-      // Apagar rascunho — relatório foi enviado com sucesso
+      mostrarSucesso('Partilha aberta. Escolha "Gmail" e clique em Enviar.');
       apagarRascunhoIDB();
       return;
     } catch (err) {
-      // Utilizador cancelou ou Web Share falhou — fazer fallback
       console.log('[Share] Cancelado ou erro:', err);
     }
   }
 
-  // Fallback: download do ficheiro + abrir mailto (browsers sem Web Share API)
+  // Fallback: download do ficheiro + abrir mailto
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -2741,16 +2766,114 @@ Embaresa PT — Embalamento`;
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 
   const destEmail = d.emailCliente || CONFIG.emailDestino;
-  let mailto = `mailto:${encodeURIComponent(destEmail)}`;
-  mailto += `?subject=${encodeURIComponent(subject)}`;
-  mailto += `&body=${encodeURIComponent(body + '\n\n[Anexar o ficheiro descarregado: ' + fileName + ']')}`;
+  const mailto = construirMailto(destEmail, subject, body + '\n[Anexar o ficheiro descarregado: ' + fileName + ']');
 
   setTimeout(() => {
     window.location.href = mailto;
-    mostrarSucesso(`Ficheiro descarregado: ${fileName}\n\nNo Outlook/Mail que vai abrir, anexe o ficheiro descarregado e envie.`);
-    // Apagar rascunho — relatório foi gerado com sucesso (ficheiro descarregado)
+    mostrarSucesso(`Ficheiro descarregado: ${fileName}\n\nNo email que abrir, anexe o ficheiro descarregado e envie.`);
     apagarRascunhoIDB();
   }, 500);
+}
+
+// ============================================
+// ENVIO MODO REVISÃO (Sónia → Aernnova)
+// ============================================
+function enviarRelatorioModoRevisao(blob, file, fileName, d) {
+  // 1. Descarregar o ficheiro automaticamente
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+  // 2. Mostrar modal com info e botão para abrir email
+  mostrarModalEnvioAernnova(fileName, d);
+}
+
+function mostrarModalEnvioAernnova(fileName, d) {
+  // Construir corpo do email
+  const tagE2 = d.requerVideos ? ' [E2]' : '';
+  const subject = `Relatório Embalamento${tagE2} — ${d.numSerie} — ${d.planoNum}`;
+
+  const body = `Olá,
+
+Segue em anexo o relatório de embalamento referente a:
+
+Encomenda: ${d.numEncomenda}
+Nº Série: ${d.numSerie}
+Plano: ${d.planoNum} — ${d.planoNome}
+Data: ${d.dataFormatada}
+Operadores Embaresa: ${d.operadorEmbaresa} e ${d.operadorEmbaresa2}
+Colaborador Aernnova: ${d.operadorCliente}
+
+Cumprimentos,
+Sónia Santos
+Embaresa PT — Controlo de Qualidade
+`;
+
+  // Construir mailto (sem destinatário — Sónia escreve na hora)
+  const mailto = construirMailto('', subject, body);
+
+  // Apresentar UI clara em modal
+  let modal = document.getElementById('modalEnvioAernnova');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modalEnvioAernnova';
+    modal.className = 'modal-overlay active';
+    modal.innerHTML = `
+      <div class="modal-card" style="max-width:600px;">
+        <h3 style="margin-top:0;color:#1a1a2e;">📧 Reencaminhar à Aernnova</h3>
+        <div style="background:#e8f5e9;border:1px solid #4caf50;padding:12px;border-radius:8px;margin-bottom:16px;">
+          ✅ <strong>Ficheiro descarregado:</strong><br>
+          <code id="modalFileName" style="font-size:0.85rem;color:#1565c0;">${fileName}</code>
+        </div>
+        <div style="background:#fff3cd;border:1px solid #ffc107;padding:12px;border-radius:8px;margin-bottom:16px;">
+          📁 <strong>Onde está o ficheiro:</strong><br>
+          Foi guardado na pasta de <strong>Transferências</strong> do seu portatil.
+        </div>
+        <ol style="font-size:0.95rem;line-height:1.6;color:#333;padding-left:20px;">
+          <li>Carregue em <strong>"📧 Abrir Outlook"</strong> abaixo — abre uma nova mensagem com assunto e corpo já preenchidos</li>
+          <li>Escreva o <strong>email da Aernnova</strong> no campo "Para:"</li>
+          <li><strong>Anexe o ficheiro</strong> <code id="modalFileName2" style="font-size:0.85rem;">${fileName}</code> da pasta Transferências</li>
+          <li>Carregue em "Enviar"</li>
+        </ol>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap;">
+          <button class="btn btn-secondary" onclick="document.getElementById('modalEnvioAernnova').remove()">Fechar</button>
+          <button class="btn btn-primary" id="btnAbrirOutlook">📧 Abrir Outlook</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  } else {
+    document.getElementById('modalFileName').textContent = fileName;
+    document.getElementById('modalFileName2').textContent = fileName;
+    modal.classList.add('active');
+  }
+
+  // Ligar botão "Abrir Outlook"
+  const btn = document.getElementById('btnAbrirOutlook');
+  btn.onclick = () => {
+    window.location.href = mailto;
+  };
+
+  // Apagar rascunho — relatório revisto foi gerado
+  apagarRascunhoIDB();
+}
+
+// Construir mailto correctamente (sem trailing = ou caracteres mal escapados)
+function construirMailto(to, subject, body) {
+  // Normalizar quebras de linha — o mailto usa %0D%0A (CRLF)
+  const bodyNorm = body.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
+  let mailto = 'mailto:';
+  if (to) mailto += encodeURIComponent(to);
+  const params = [];
+  if (subject) params.push('subject=' + encodeURIComponent(subject));
+  if (bodyNorm) params.push('body=' + encodeURIComponent(bodyNorm));
+  if (params.length) mailto += '?' + params.join('&');
+  return mailto;
 }
 
 // ============================================
@@ -2760,11 +2883,13 @@ function validarBasico(soAviso) {
   const d = getDados();
   const erros = [];
 
-  // Validação de campos finais do envio
-  if (!d.emailCliente) erros.push('Indique o email da Aernnova.');
+  // Detectar se está em Modo Revisão (não validar email — Sónia escreve manualmente à Aernnova)
+  const isModoRevisao = !!document.getElementById('bannerModoEdicao');
 
-  // No wizard, todos os passos anteriores já foram validados.
-  // Aqui validamos apenas os campos do passo 9.
+  if (!isModoRevisao && !d.emailCliente) {
+    erros.push('Indique o email de destino (Sónia).');
+  }
+
   if (erros.length > 0) {
     alert('⚠️ Antes de enviar:\n\n• ' + erros.join('\n• '));
     return false;
