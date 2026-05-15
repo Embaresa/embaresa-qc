@@ -652,15 +652,17 @@
 
   <div class="top-bar">
     <button class="btn btn-secondary btn-sm" onclick="novoRelatorio()">🔄 Novo</button>
-    <button class="btn btn-secondary btn-sm" onclick="abrirRelatorioExistente()">📂 Abrir Relatório</button>
-    <button class="btn btn-secondary btn-sm" onclick="guardarRascunho()">💾 Guardar</button>
+    <button class="btn btn-secondary btn-sm" onclick="abrirListaRascunhos()">📂 Rascunhos <span id="contadorRascunhos" style="background:#ff9800;color:white;border-radius:10px;padding:1px 6px;font-size:0.75rem;font-weight:bold;display:none;margin-left:3px;">0</span></button>
+    <button class="btn btn-secondary btn-sm" onclick="abrirHistoricoEnviados()">📚 Enviados</button>
+    <button class="btn btn-secondary btn-sm" onclick="abrirRelatorioExistente()">📁 Abrir HTML</button>
     <button class="btn btn-secondary btn-sm" onclick="abrirAjuda()">❓ Ajuda</button>
     <button class="btn btn-sm" id="btnInstalarPWA" style="background:linear-gradient(135deg,#28a745,#1e7e34);color:#fff;display:none;">📲 Instalar</button>
   </div>
 
   <!-- Cronómetro em tempo real (visível quando embalamento iniciado) -->
-  <div id="liveTimerBar" style="display:none;background:linear-gradient(135deg,#0d47a1,#1976d2);color:white;padding:10px 16px;text-align:center;font-weight:600;font-size:0.95rem;border-radius:0 0 8px 8px;margin-bottom:12px;box-shadow:0 2px 8px rgba(13,71,161,0.25);">
-    ⏱️ <span id="liveTimerLabel">A embalar há</span> <span id="liveTimerValue" style="font-size:1.1rem;font-family:monospace;">00:00:00</span>
+  <div id="liveTimerBar" style="display:none;background:linear-gradient(135deg,#0d47a1,#1976d2);color:white;padding:10px 16px;text-align:center;font-weight:600;font-size:0.95rem;border-radius:0 0 8px 8px;margin-bottom:12px;box-shadow:0 2px 8px rgba(13,71,161,0.25);display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;">
+    <span><span id="liveTimerLabel">A embalar há</span> <span id="liveTimerValue" style="font-size:1.1rem;font-family:monospace;">00:00:00</span></span>
+    <button id="btnPausarRetomar" onclick="toggleCronometro()" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:4px 12px;border-radius:6px;font-weight:600;cursor:pointer;font-size:0.85rem;">⏸️ Pausar</button>
   </div>
 
   <!-- ===== PASSO 1: IDENTIFICAÇÃO ===== -->
@@ -1140,7 +1142,7 @@ const CONFIG = {
   powerAutomateEndpoint: '',  // Ex: 'https://prod-XX.westeurope.logic.azure.com:443/workflows/...'
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.5.2'
+  versao: '1.5.4'
 };
 // ============================================
 
@@ -1222,7 +1224,7 @@ const state = {
   },
   checklist: {},
   signatures: {},
-  cronometro: { inicio: null, fim: null },
+  cronometro: { sessoes: [], emPausa: false },
   currentStep: 1
 };
 
@@ -1302,6 +1304,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auto-save robusto (IndexedDB) + tentativa de recuperação
   configurarAutoSave();
   tentarRecuperarRascunho();
+  // Inicializar contador de rascunhos no top-bar
+  setTimeout(atualizarContadorRascunhos, 1000);
 });
 
 // ============================================
@@ -1510,9 +1514,9 @@ function validarPasso(n) {
   }
 
   // Iniciar cronómetro ao avançar do Passo 1 (entrada no Passo 2)
-  if (n === 1 && !state.cronometro.inicio) {
-    state.cronometro.inicio = new Date().toISOString();
-    if (typeof autoSave === 'function') autoSave();
+  normalizarCronometro();
+  if (n === 1 && state.cronometro.sessoes.length === 0) {
+    iniciarNovaSessao();
     if (typeof iniciarLiveTimer === 'function') iniciarLiveTimer();
   }
 
@@ -1529,13 +1533,16 @@ function atualizarResumoFinal() {
   if (!box) return;
   const totalFotos = state.fotos.length;
   const fasesE2 = E2_FASES.filter(f => state.videosE2[f.id].gravado).length;
+  const sessoesInfo = d.cronometroNumSessoes > 1
+    ? ` <span style="color:#e65100;font-weight:600;">(${d.cronometroNumSessoes} sessões — embalamento com pausas)</span>`
+    : '';
   box.innerHTML = `
     <h4>📋 Resumo do Relatório</h4>
     <ul>
       <li><strong>Plano:</strong> ${escapeHtml(d.planoNum)} — ${escapeHtml(d.planoNome)}</li>
       <li><strong>Cliente:</strong> ${escapeHtml(d.cliente)}</li>
       <li><strong>Encomenda:</strong> ${escapeHtml(d.numEncomenda)} • <strong>Série:</strong> ${escapeHtml(d.numSerie)}</li>
-      <li><strong>Data:</strong> ${d.dataFormatada} • <strong>Início embalamento:</strong> ${escapeHtml(d.cronometroInicio)}</li>
+      <li><strong>Início:</strong> ${escapeHtml(d.cronometroInicio)} • <strong>Tempo efectivo:</strong> ${escapeHtml(d.cronometroTotal)}${sessoesInfo}</li>
       <li><strong>Equipa:</strong> ${escapeHtml(d.operadorEmbaresa)} + ${escapeHtml(d.operadorEmbaresa2)} • <strong>Aernnova:</strong> ${escapeHtml(d.operadorCliente)}</li>
       <li><strong>Fotos:</strong> ${totalFotos} no total</li>
       ${d.requerVideos ? `<li><strong>Vídeos E2:</strong> ${fasesE2}/3 fases registadas</li>` : ''}
@@ -1674,37 +1681,106 @@ function atualizarDisplayCliente() {
 }
 
 // ============================================
-// CRONÓMETRO LIVE (mostra tempo a correr no topo da app)
+// CRONÓMETRO MULTI-SESSÃO (suporta pausa/retoma)
 // ============================================
 let liveTimerInterval = null;
 
+// Garantir compatibilidade com formato antigo {inicio, fim}
+function normalizarCronometro() {
+  if (!state.cronometro) {
+    state.cronometro = { sessoes: [], emPausa: false };
+    return;
+  }
+  // Formato antigo {inicio, fim} → converter para {sessoes: [{inicio, fim}]}
+  if (state.cronometro.inicio !== undefined || state.cronometro.fim !== undefined) {
+    const inicio = state.cronometro.inicio;
+    const fim = state.cronometro.fim;
+    state.cronometro = { sessoes: [], emPausa: false };
+    if (inicio) state.cronometro.sessoes.push({ inicio, fim: fim || null });
+  }
+  if (!Array.isArray(state.cronometro.sessoes)) state.cronometro.sessoes = [];
+  if (typeof state.cronometro.emPausa !== 'boolean') state.cronometro.emPausa = false;
+}
+
+// Iniciar nova sessão (ou primeira)
+function iniciarNovaSessao() {
+  normalizarCronometro();
+  state.cronometro.sessoes.push({ inicio: new Date().toISOString(), fim: null });
+  state.cronometro.emPausa = false;
+  if (typeof autoSave === 'function') autoSave();
+}
+
+// Fechar sessão actual (marcar fim)
+function fecharSessaoActual() {
+  normalizarCronometro();
+  const ultima = state.cronometro.sessoes[state.cronometro.sessoes.length - 1];
+  if (ultima && !ultima.fim) {
+    ultima.fim = new Date().toISOString();
+  }
+}
+
+// Há uma sessão a correr (em curso)?
+function temSessaoEmCurso() {
+  normalizarCronometro();
+  if (state.cronometro.emPausa) return false;
+  const ultima = state.cronometro.sessoes[state.cronometro.sessoes.length - 1];
+  return ultima && !ultima.fim;
+}
+
+// Calcular tempo total efectivo (soma das sessões fechadas + sessão em curso)
+function tempoTotalEfectivoMs() {
+  normalizarCronometro();
+  let total = 0;
+  state.cronometro.sessoes.forEach(s => {
+    if (!s.inicio) return;
+    const ini = new Date(s.inicio).getTime();
+    const fim = s.fim ? new Date(s.fim).getTime() : (state.cronometro.emPausa ? ini : Date.now());
+    if (fim > ini) total += (fim - ini);
+  });
+  return total;
+}
+
+function formatarTempo(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
 function iniciarLiveTimer() {
-  // Só arranca se houver início definido e ainda sem fim
-  if (!state.cronometro || !state.cronometro.inicio) return;
-  if (state.cronometro.fim) return;  // já parou
+  normalizarCronometro();
+  if (state.cronometro.sessoes.length === 0) return;
 
   const bar = document.getElementById('liveTimerBar');
   if (!bar) return;
   bar.style.display = 'block';
 
-  // Limpar intervalo anterior se existir
   if (liveTimerInterval) clearInterval(liveTimerInterval);
 
   function tick() {
     const valor = document.getElementById('liveTimerValue');
-    if (!valor) return;
-    const inicio = new Date(state.cronometro.inicio).getTime();
-    const agora = Date.now();
-    const diffSec = Math.max(0, Math.floor((agora - inicio) / 1000));
-    const h = Math.floor(diffSec / 3600);
-    const m = Math.floor((diffSec % 3600) / 60);
-    const s = diffSec % 60;
-    valor.textContent =
-      String(h).padStart(2, '0') + ':' +
-      String(m).padStart(2, '0') + ':' +
-      String(s).padStart(2, '0');
+    const label = document.getElementById('liveTimerLabel');
+    const btnPausar = document.getElementById('btnPausarRetomar');
+    if (!valor || !label) return;
+
+    const total = tempoTotalEfectivoMs();
+    valor.textContent = formatarTempo(total);
+
+    if (state.cronometro.emPausa) {
+      label.textContent = '⏸ Em pausa — total trabalhado:';
+      bar.style.background = 'linear-gradient(135deg,#f57c00,#e65100)';
+      if (btnPausar) btnPausar.textContent = '▶️ Retomar';
+    } else {
+      const numSessoes = state.cronometro.sessoes.length;
+      label.textContent = numSessoes > 1
+        ? `⏱️ A embalar (sessão ${numSessoes}) — total:`
+        : '⏱️ A embalar há';
+      bar.style.background = 'linear-gradient(135deg,#0d47a1,#1976d2)';
+      if (btnPausar) btnPausar.textContent = '⏸️ Pausar';
+    }
   }
-  tick();  // primeira atualização imediata
+  tick();
   liveTimerInterval = setInterval(tick, 1000);
 }
 
@@ -1715,6 +1791,158 @@ function pararLiveTimer() {
   }
   const bar = document.getElementById('liveTimerBar');
   if (bar) bar.style.display = 'none';
+}
+
+// Botão Pausar/Retomar
+function toggleCronometro() {
+  normalizarCronometro();
+  // Guarda: não fazer nada se ainda não há sessões iniciadas
+  if (state.cronometro.sessoes.length === 0) {
+    mostrarToast('⚠️ Cronómetro ainda não iniciado. Avance do Passo 1 primeiro.');
+    return;
+  }
+  if (state.cronometro.emPausa) {
+    // Retomar: nova sessão
+    iniciarNovaSessao();
+    mostrarToast('▶️ Cronómetro retomado');
+    iniciarLiveTimer();
+  } else {
+    // Pausar: fechar sessão actual
+    fecharSessaoActual();
+    state.cronometro.emPausa = true;
+    if (typeof autoSave === 'function') autoSave();
+    iniciarLiveTimer();  // re-render barra em modo pausa
+
+    // ENVIO OBRIGATÓRIO de relatório parcial à Sónia
+    setTimeout(() => {
+      enviarRelatorioParcial();
+    }, 200);
+  }
+}
+
+// Envia relatório parcial à Sónia automaticamente quando o operador pausa
+async function enviarRelatorioParcial() {
+  const d = getDados();
+
+  // Só enviar se houver dados mínimos (plano + série)
+  if (!d.planoNum) {
+    mostrarToast('⏸️ Pausa registada. (Relatório parcial não enviado: falta seleccionar plano)');
+    return;
+  }
+  if (d.numSerie === '—') {
+    mostrarToast('⏸️ Pausa registada. (Relatório parcial não enviado: falta nº de série)');
+    return;
+  }
+
+  try {
+    // Gerar HTML do relatório (já mostra estado "parcial" porque a última sessão tem fim e há pausa)
+    const html = gerarRelatorioHTML();
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+
+    // Nome do ficheiro: PARCIAL_Relatorio_EM-1663_230324R2_2026-05-15_S2.html
+    const dataFile = d.dataInput || new Date().toISOString().split('T')[0];
+    const snFile = (d.numSerie || 'novo').replace(/\s+/g,'-').replace(/[^a-zA-Z0-9-]/g,'');
+    const planoFile = (d.planoNum || '').replace(/\s+/g,'_');
+    const numSessao = state.cronometro.sessoes.length;
+    const fileName = `PARCIAL_Relatorio_${snFile}_${planoFile}_${dataFile}_S${numSessao}.html`;
+    const file = new File([blob], fileName, { type: 'text/html' });
+
+    // Assunto e corpo
+    const subject = `[PARCIAL — pausado] Relatório Embalamento — ${d.numSerie} — ${d.planoNum}`;
+
+    const body = `Olá Sónia,
+
+O embalamento foi PAUSADO. Segue em anexo o relatório parcial.
+
+DADOS DA EMBALAGEM:
+Encomenda: ${d.numEncomenda}
+Nº Série: ${d.numSerie}
+Plano: ${d.planoNum} — ${d.planoNome}
+Operador 1: ${d.operadorEmbaresa}
+Operador 2: ${d.operadorEmbaresa2}
+
+PROGRESSO ACTUAL:
+Sessões até agora: ${d.cronometroNumSessoes}
+Tempo efectivo: ${d.cronometroTotal}
+Primeira sessão início: ${d.cronometroInicio}
+Última sessão fim: ${d.cronometroFim}
+
+O embalamento será retomado mais tarde.
+
+Cumprimentos,
+${d.operadorEmbaresa}
+Embaresa PT — Embalamento
+`;
+
+    // Tentar Web Share API com ficheiro (Android Chrome / iOS Safari)
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          title: subject,
+          text: body,
+          files: [file]
+        });
+        mostrarToast('⏸️ Pausa registada. Relatório parcial enviado.');
+        return;
+      } catch (err) {
+        console.log('[Share parcial] Cancelado ou erro:', err);
+      }
+    }
+
+    // Fallback: download + mailto
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+    const destEmail = CONFIG.emailDestino;
+    const mailto = construirMailto(destEmail, subject, body + '\n[Anexar o ficheiro descarregado: ' + fileName + ']');
+
+    setTimeout(() => {
+      window.location.href = mailto;
+      mostrarToast('⏸️ Pausa registada. Anexe o ficheiro descarregado ao email.');
+    }, 500);
+
+  } catch (err) {
+    console.error('Erro ao gerar relatório parcial:', err);
+    mostrarToast('⏸️ Pausa registada. Erro ao gerar relatório parcial.');
+  }
+}
+
+// Quando app retoma (ex: fechou ontem, abre hoje), verifica se mudou de dia
+function verificarMudancaDeDia() {
+  normalizarCronometro();
+  if (state.cronometro.sessoes.length === 0) return;
+  if (state.cronometro.emPausa) return;  // já está em pausa, nada a fazer
+
+  const ultima = state.cronometro.sessoes[state.cronometro.sessoes.length - 1];
+  if (!ultima || !ultima.inicio || ultima.fim) return;  // sessão fechada → nada
+
+  const inicioSessao = new Date(ultima.inicio);
+  const agora = new Date();
+  const diffHoras = (agora - inicioSessao) / (1000 * 60 * 60);
+
+  // Se passaram mais de 6 horas OU mudou o dia desde o início, perguntar
+  const mudouDia = inicioSessao.toDateString() !== agora.toDateString();
+  if (diffHoras > 6 || mudouDia) {
+    setTimeout(() => {
+      const opcoes = `O cronómetro estava a correr desde ${inicioSessao.toLocaleString('pt-PT')}.\n\n` +
+        `Já passaram ${Math.floor(diffHoras)}h ${Math.floor((diffHoras % 1) * 60)}min.\n\n` +
+        `OK = Descontar este tempo como pausa (recomendado se houve interrupção)\n` +
+        `Cancelar = Continuar a contar (foi mesmo trabalho contínuo)`;
+      if (confirm(opcoes)) {
+        // Descontar como pausa: fechar sessão no momento do início (duração zero)
+        // E criar uma nova sessão aberta agora
+        ultima.fim = ultima.inicio;
+        iniciarNovaSessao();
+        mostrarToast('⏱️ Pausa registada. Nova sessão iniciada.');
+      }
+    }, 800);
+  }
 }
 
 // ============================================
@@ -1774,7 +2002,6 @@ async function onPhotoSelected(event, stepKey) {
   const files = Array.from(event.target.files || []);
   if (!files.length) return;
 
-  // Compressão fixa de boa qualidade (sem UI de configuração no wizard)
   const quality = 0.7;
   const maxSize = 1600;
 
@@ -1782,13 +2009,43 @@ async function onPhotoSelected(event, stepKey) {
     try {
       const dataUrl = await comprimirImagem(file, maxSize, quality);
       state.fotos.push({ id: nextPhotoId++, dataUrl, label: '', step: stepKey });
+
+      // Salvaguarda — guardar cópia da foto comprimida na pasta Downloads do dispositivo
+      // Isto sobrevive a apagamento do rascunho IndexedDB
+      try { await guardarFotoLocalmente(dataUrl, stepKey); }
+      catch (e) { console.warn('[Backup foto] falhou:', e); }
     } catch (e) {
       console.error('Erro ao processar foto:', e);
     }
   }
   if (event.target) event.target.value = '';
   renderFotosStep(stepKey);
-  autoSave(true);  // gravar imediatamente após foto
+  autoSave(true);
+}
+
+// Guarda uma cópia da foto comprimida na pasta Downloads (salvaguarda contra perda de IndexedDB)
+async function guardarFotoLocalmente(dataUrl, stepKey) {
+  // Identificar relatório (série/plano para nomear)
+  const d = getDados();
+  const snFile = d.numSerie !== '—' ? d.numSerie.replace(/\s+/g, '-') : 'sem-serie';
+  const planoFile = d.planoNum || 'sem-plano';
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+  const fileName = `EmbaresaQC_${snFile}_${planoFile}_${stepKey}_${ts}.jpg`;
+
+  // Converter dataUrl para blob
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+
+  // Download invisível
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
 function comprimirImagem(file, maxSize, quality) {
@@ -2210,24 +2467,44 @@ function getDados() {
   // isE2 mantém-se mas agora é "alias" para requerVideos
   const isE2 = requerVideos;
 
-  // Cronómetro
-  const tInicio = state.cronometro && state.cronometro.inicio ? new Date(state.cronometro.inicio) : null;
-  const tFim = state.cronometro && state.cronometro.fim ? new Date(state.cronometro.fim) : null;
+  // Cronómetro multi-sessão
+  normalizarCronometro();
+  const sessoes = state.cronometro.sessoes || [];
+
+  // Calcular tempo total efectivo
+  const totalMs = tempoTotalEfectivoMs();
   let tempoTotalFmt = '—';
-  let inicioFmt = '—';
-  let fimFmt = '—';
-  if (tInicio) inicioFmt = tInicio.toLocaleString('pt-PT');
-  if (tFim) fimFmt = tFim.toLocaleString('pt-PT');
-  if (tInicio && tFim) {
-    const diffMs = tFim - tInicio;
-    if (diffMs > 0) {
-      const totalSec = Math.floor(diffMs / 1000);
-      const horas = Math.floor(totalSec / 3600);
-      const mins = Math.floor((totalSec % 3600) / 60);
-      const segs = totalSec % 60;
-      tempoTotalFmt = (horas > 0 ? horas + 'h ' : '') + mins + 'min ' + segs + 's';
-    }
+  if (totalMs > 0) {
+    const totalSec = Math.floor(totalMs / 1000);
+    const horas = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const segs = totalSec % 60;
+    tempoTotalFmt = (horas > 0 ? horas + 'h ' : '') + mins + 'min ' + segs + 's';
   }
+
+  // Formatar lista de sessões para o relatório
+  const sessoesFmt = sessoes.map((s, idx) => {
+    if (!s.inicio) return null;
+    const ini = new Date(s.inicio);
+    const fim = s.fim ? new Date(s.fim) : null;
+    const durMs = fim ? (fim - ini) : 0;
+    const durSec = Math.floor(durMs / 1000);
+    const dh = Math.floor(durSec / 3600);
+    const dm = Math.floor((durSec % 3600) / 60);
+    const ds = durSec % 60;
+    return {
+      num: idx + 1,
+      inicioFmt: ini.toLocaleString('pt-PT'),
+      fimFmt: fim ? fim.toLocaleString('pt-PT') : '—',
+      duracaoFmt: fim ? ((dh > 0 ? dh + 'h ' : '') + dm + 'min ' + ds + 's') : '—'
+    };
+  }).filter(Boolean);
+
+  // Início e fim "globais" (primeira sessão, última sessão fechada)
+  const primeiraSessao = sessoes.find(s => s.inicio);
+  const ultimaSessaoFechada = [...sessoes].reverse().find(s => s.fim);
+  const inicioFmt = primeiraSessao ? new Date(primeiraSessao.inicio).toLocaleString('pt-PT') : '—';
+  const fimFmt = ultimaSessaoFechada ? new Date(ultimaSessaoFechada.fim).toLocaleString('pt-PT') : '—';
 
   return {
     cliente: v('cliente', ''),
@@ -2254,7 +2531,9 @@ function getDados() {
     emailCC: v('emailCC', ''),
     cronometroInicio: inicioFmt,
     cronometroFim: fimFmt,
-    cronometroTotal: tempoTotalFmt
+    cronometroTotal: tempoTotalFmt,
+    cronometroSessoes: sessoesFmt,
+    cronometroNumSessoes: sessoesFmt.length
   };
 }
 
@@ -2405,7 +2684,14 @@ function gerarRelatorioHTML() {
 </style>
 </head>
 <body>
-  <h1>📦 Relatório de Embalamento</h1>
+  ${state.cronometro && state.cronometro.emPausa ? `
+  <div style="background:linear-gradient(135deg,#fff3e0,#ffe0b2);border:2px solid #ff9800;border-radius:8px;padding:16px;margin-bottom:20px;text-align:center;">
+    <div style="font-size:1.1rem;font-weight:700;color:#e65100;">⏸️ RELATÓRIO PARCIAL — Embalamento ainda em curso</div>
+    <div style="font-size:0.88rem;color:#bf360c;margin-top:6px;">
+      O embalamento foi pausado e será retomado posteriormente. Este é um registo intermédio do progresso.
+    </div>
+  </div>` : ''}
+  <h1>📦 Relatório de Embalamento${state.cronometro && state.cronometro.emPausa ? ' <span style="color:#e65100;font-size:0.7em;">[PARCIAL]</span>' : ''}</h1>
   <div class="rep-header">Embaresa PT — Controlo de Qualidade • ${d.dataFormatada}</div>
 
   <h2>1. Identificação</h2>
@@ -2430,7 +2716,7 @@ function gerarRelatorioHTML() {
   <h2>3. Tempos de Embalamento</h2>
   <div class="rep-cronometro">
     <div class="rep-cronometro-item">
-      <div class="rep-cronometro-label">⏱️ Início</div>
+      <div class="rep-cronometro-label">⏱️ Primeiro Início</div>
       <div class="rep-cronometro-valor">${escapeHtml(d.cronometroInicio)}</div>
     </div>
     <div class="rep-cronometro-item">
@@ -2438,10 +2724,32 @@ function gerarRelatorioHTML() {
       <div class="rep-cronometro-valor">${escapeHtml(d.cronometroFim)}</div>
     </div>
     <div class="rep-cronometro-item">
-      <div class="rep-cronometro-label">⌛ Tempo Total</div>
+      <div class="rep-cronometro-label">⌛ Tempo Total Efectivo</div>
       <div class="rep-cronometro-valor">${escapeHtml(d.cronometroTotal)}</div>
     </div>
   </div>
+  ${d.cronometroNumSessoes > 1 ? `
+  <div style="margin-top:14px;">
+    <div style="font-weight:600;font-size:0.9rem;color:#1a1a2e;margin-bottom:8px;">
+      📋 Detalhe das sessões (${d.cronometroNumSessoes} sessões — embalamento com pausas)
+    </div>
+    <table class="rep-table" style="font-size:0.85rem;">
+      <tr>
+        <th style="background:#f0f7ff;padding:6px;text-align:left;border:1px solid #ddd;">Sessão</th>
+        <th style="background:#f0f7ff;padding:6px;text-align:left;border:1px solid #ddd;">Início</th>
+        <th style="background:#f0f7ff;padding:6px;text-align:left;border:1px solid #ddd;">Fim</th>
+        <th style="background:#f0f7ff;padding:6px;text-align:left;border:1px solid #ddd;">Duração</th>
+      </tr>
+      ${d.cronometroSessoes.map(s => `
+        <tr>
+          <td style="padding:6px;border:1px solid #ddd;">${s.num}</td>
+          <td style="padding:6px;border:1px solid #ddd;">${escapeHtml(s.inicioFmt)}</td>
+          <td style="padding:6px;border:1px solid #ddd;">${escapeHtml(s.fimFmt)}</td>
+          <td style="padding:6px;border:1px solid #ddd;"><strong>${escapeHtml(s.duracaoFmt)}</strong></td>
+        </tr>
+      `).join('')}
+    </table>
+  </div>` : ''}
 
   ${ehEmbalagem ? `<h2>4. Verificação (Checklist)</h2>${checklistHTML}` : ''}
   ${dimensoesHTML}
@@ -2682,9 +2990,10 @@ async function enviarRelatorio() {
     if (!confirm('⚠️ Está sem ligação à internet.\n\nO relatório vai ser preparado mas não poderá ser enviado até voltar a ter rede.\n\nContinuar mesmo assim?')) return;
   }
 
-  // Marcar fim do cronómetro (se ainda não estiver marcado)
-  if (state.cronometro && !state.cronometro.fim) {
-    state.cronometro.fim = new Date().toISOString();
+  // Fechar sessão final do cronómetro (se ainda houver alguma em curso)
+  normalizarCronometro();
+  if (temSessaoEmCurso()) {
+    fecharSessaoActual();
   }
   // Parar timer live
   if (typeof pararLiveTimer === 'function') pararLiveTimer();
@@ -2748,7 +3057,9 @@ Embaresa PT — Embalamento
         files: [file]
       });
       mostrarSucesso('Partilha aberta. Escolha "Gmail" e clique em Enviar.');
+      await gravarEnviado(html, d);
       apagarRascunhoIDB();
+      atualizarContadorRascunhos();
       return;
     } catch (err) {
       console.log('[Share] Cancelado ou erro:', err);
@@ -2768,10 +3079,12 @@ Embaresa PT — Embalamento
   const destEmail = d.emailCliente || CONFIG.emailDestino;
   const mailto = construirMailto(destEmail, subject, body + '\n[Anexar o ficheiro descarregado: ' + fileName + ']');
 
-  setTimeout(() => {
+  setTimeout(async () => {
     window.location.href = mailto;
     mostrarSucesso(`Ficheiro descarregado: ${fileName}\n\nNo email que abrir, anexe o ficheiro descarregado e envie.`);
+    await gravarEnviado(html, d);
     apagarRascunhoIDB();
+    atualizarContadorRascunhos();
   }, 500);
 }
 
@@ -2789,7 +3102,12 @@ function enviarRelatorioModoRevisao(blob, file, fileName, d) {
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 
-  // 2. Mostrar modal com info e botão para abrir email
+  // 2. Gravar no histórico (precisamos ler o blob como texto)
+  blob.text().then(htmlText => {
+    gravarEnviado(htmlText, d);
+  }).catch(e => console.error('Erro a gravar histórico:', e));
+
+  // 3. Mostrar modal com info e botão para abrir email
   mostrarModalEnvioAernnova(fileName, d);
 }
 
@@ -2919,40 +3237,92 @@ function mostrarSucesso(msg) {
 // Recuperação automática: ao abrir a app, verifica se há rascunho recente e
 // pergunta ao utilizador se quer recuperar.
 
+// ============================================
+// INDEXEDDB v2 — Múltiplos rascunhos + Histórico de enviados
+// ============================================
+// ObjectStore 'rascunhos' (key = série EM ou TEMP_<timestamp>):
+//   - cada relatório em curso fica guardado separadamente
+//   - quando série é preenchida, migra de TEMP_xxx para EM<num>
+// ObjectStore 'enviados' (key = <timestamp>_<EM>):
+//   - histórico dos últimos 10 relatórios gerados (30 dias)
+//
+// Compatibilidade: lê DB v1 (chave 'rascunhoActual') e migra automaticamente
+
 const DB_NAME = 'EmbaresaQC';
 const DB_STORE = 'rascunhos';
-const DB_KEY = 'rascunhoActual';
+const DB_STORE_ENVIADOS = 'enviados';
+const DB_VERSION = 2;
+const DB_KEY_LEGACY = 'rascunhoActual';  // chave única antiga (v1)
+const MAX_HISTORICO = 10;
+const DIAS_HISTORICO = 30;
+
 let dbInstance = null;
 let autoSavePending = null;
 let autoSaveTimer = null;
+
+// Chave do rascunho actualmente activo (em memória, só durante sessão)
+let rascunhoActualKey = null;
 
 function abrirIndexedDB() {
   return new Promise((resolve, reject) => {
     if (dbInstance) return resolve(dbInstance);
     if (!window.indexedDB) {
-      console.warn('[AutoSave] IndexedDB não disponível neste browser. Auto-save desactivado.');
+      console.warn('[AutoSave] IndexedDB não disponível.');
       return reject(new Error('IndexedDB indisponível'));
     }
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onerror = () => reject(req.error);
     req.onsuccess = () => { dbInstance = req.result; resolve(dbInstance); };
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
+      // v1 → v2: criar store 'enviados' se faltar
       if (!db.objectStoreNames.contains(DB_STORE)) {
         db.createObjectStore(DB_STORE);
+      }
+      if (!db.objectStoreNames.contains(DB_STORE_ENVIADOS)) {
+        db.createObjectStore(DB_STORE_ENVIADOS);
       }
     };
   });
 }
 
+// Gerar chave para o rascunho actual
+function calcularKeyRascunho() {
+  const numSerieInput = document.getElementById('numSerie');
+  const v = numSerieInput && numSerieInput.value ? numSerieInput.value.trim() : '';
+  if (v) {
+    const normalizado = ('EM' + v.replace(/^EM\s*/i, '').trim()).toUpperCase().replace(/\s+/g, '');
+    return normalizado;
+  }
+  // Sem série ainda — usar chave temporária persistente nesta sessão
+  if (!rascunhoActualKey || !rascunhoActualKey.startsWith('TEMP_')) {
+    rascunhoActualKey = 'TEMP_' + Date.now();
+  }
+  return rascunhoActualKey;
+}
+
 async function gravarRascunhoIDB(dados) {
   try {
     const db = await abrirIndexedDB();
+    const key = calcularKeyRascunho();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(DB_STORE, 'readwrite');
       const store = tx.objectStore(DB_STORE);
-      const req = store.put(dados, DB_KEY);
-      req.onsuccess = () => resolve();
+      // Se a chave de série mudou desde a última gravação, apagar a temporária antiga
+      const dadosComMeta = Object.assign({}, dados, {
+        keyRascunho: key,
+        dataUltimaActividade: new Date().toISOString()
+      });
+      const req = store.put(dadosComMeta, key);
+      req.onsuccess = () => {
+        // Se mudou de TEMP para EM, limpar TEMP antigo
+        if (rascunhoActualKey && rascunhoActualKey.startsWith('TEMP_') && key !== rascunhoActualKey) {
+          const txOld = db.transaction(DB_STORE, 'readwrite');
+          txOld.objectStore(DB_STORE).delete(rascunhoActualKey);
+        }
+        rascunhoActualKey = key;
+        resolve();
+      };
       req.onerror = () => reject(req.error);
     });
   } catch (e) {
@@ -2960,35 +3330,166 @@ async function gravarRascunhoIDB(dados) {
   }
 }
 
-async function lerRascunhoIDB() {
+async function listarRascunhosIDB() {
   try {
     const db = await abrirIndexedDB();
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const tx = db.transaction(DB_STORE, 'readonly');
       const store = tx.objectStore(DB_STORE);
-      const req = store.get(DB_KEY);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      const req = store.openCursor();
+      const lista = [];
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          lista.push({ key: cursor.key, value: cursor.value });
+          cursor.continue();
+        } else {
+          resolve(lista);
+        }
+      };
+      req.onerror = () => resolve([]);
     });
+  } catch (e) {
+    console.error('[AutoSave] Erro ao listar:', e);
+    return [];
+  }
+}
+
+async function lerRascunhoEspecificoIDB(key) {
+  try {
+    const db = await abrirIndexedDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE, 'readonly');
+      const store = tx.objectStore(DB_STORE);
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
+  } catch (e) { return null; }
+}
+
+// Compatibilidade: lê rascunho de v1 (chave única 'rascunhoActual')
+async function lerRascunhoIDB() {
+  try {
+    const lista = await listarRascunhosIDB();
+    if (!lista.length) return null;
+    // Devolver o mais recente
+    lista.sort((a, b) => {
+      const da = a.value.dataUltimaActividade || a.value.timestamp || 0;
+      const db = b.value.dataUltimaActividade || b.value.timestamp || 0;
+      return new Date(db) - new Date(da);
+    });
+    rascunhoActualKey = lista[0].key;
+    return lista[0].value;
   } catch (e) {
     console.error('[AutoSave] Erro ao ler:', e);
     return null;
   }
 }
 
-async function apagarRascunhoIDB() {
+async function apagarRascunhoIDB(key) {
   try {
     const db = await abrirIndexedDB();
+    const targetKey = key || rascunhoActualKey || DB_KEY_LEGACY;
     return new Promise((resolve, reject) => {
       const tx = db.transaction(DB_STORE, 'readwrite');
       const store = tx.objectStore(DB_STORE);
-      const req = store.delete(DB_KEY);
-      req.onsuccess = () => resolve();
+      const req = store.delete(targetKey);
+      req.onsuccess = () => {
+        if (targetKey === rascunhoActualKey) rascunhoActualKey = null;
+        resolve();
+      };
       req.onerror = () => reject(req.error);
     });
   } catch (e) {
     console.error('[AutoSave] Erro ao apagar:', e);
   }
+}
+
+// ============================================
+// HISTÓRICO DE ENVIADOS
+// ============================================
+async function gravarEnviado(html, dados) {
+  try {
+    const db = await abrirIndexedDB();
+    const ts = Date.now();
+    const key = ts + '_' + (dados.numSerie || 'sem').replace(/\s+/g, '_');
+    const registo = {
+      key,
+      timestamp: ts,
+      dataEnvio: new Date().toISOString(),
+      numSerie: dados.numSerie,
+      planoNum: dados.planoNum,
+      planoNome: dados.planoNome,
+      numEncomenda: dados.numEncomenda,
+      operadorEmbaresa: dados.operadorEmbaresa,
+      html: html  // HTML completo do relatório
+    };
+    return new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE_ENVIADOS, 'readwrite');
+      const store = tx.objectStore(DB_STORE_ENVIADOS);
+      store.put(registo, key);
+      tx.oncomplete = () => {
+        limparEnviadosAntigos();
+        resolve();
+      };
+    });
+  } catch (e) {
+    console.error('[Histórico] Erro ao gravar enviado:', e);
+  }
+}
+
+async function listarEnviados() {
+  try {
+    const db = await abrirIndexedDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE_ENVIADOS, 'readonly');
+      const store = tx.objectStore(DB_STORE_ENVIADOS);
+      const req = store.openCursor();
+      const lista = [];
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          lista.push(cursor.value);
+          cursor.continue();
+        } else {
+          lista.sort((a, b) => b.timestamp - a.timestamp);
+          resolve(lista);
+        }
+      };
+      req.onerror = () => resolve([]);
+    });
+  } catch (e) {
+    return [];
+  }
+}
+
+// Manter só os últimos MAX_HISTORICO ou últimos DIAS_HISTORICO dias
+async function limparEnviadosAntigos() {
+  try {
+    const lista = await listarEnviados();
+    if (!lista.length) return;
+    const limiteData = Date.now() - (DIAS_HISTORICO * 24 * 60 * 60 * 1000);
+    const aApagar = lista.filter((r, idx) => idx >= MAX_HISTORICO || r.timestamp < limiteData);
+    if (!aApagar.length) return;
+    const db = await abrirIndexedDB();
+    const tx = db.transaction(DB_STORE_ENVIADOS, 'readwrite');
+    const store = tx.objectStore(DB_STORE_ENVIADOS);
+    aApagar.forEach(r => store.delete(r.key));
+  } catch (e) {
+    console.error('[Histórico] Erro a limpar:', e);
+  }
+}
+
+async function apagarEnviado(key) {
+  try {
+    const db = await abrirIndexedDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE_ENVIADOS, 'readwrite');
+      tx.objectStore(DB_STORE_ENVIADOS).delete(key);
+      tx.oncomplete = resolve;
+    });
+  } catch (e) {}
 }
 
 function recolherEstadoCompleto() {
@@ -3095,102 +3596,129 @@ function configurarAutoSave() {
 }
 
 async function tentarRecuperarRascunho() {
-  const r = await lerRascunhoIDB();
-  if (!r || !r.timestamp) return;
+  const lista = await listarRascunhosIDB();
+  if (!lista.length) return;
 
-  const idadeMinutos = (Date.now() - r.timestamp) / 60000;
+  const hoje = new Date().toDateString();
+  const rascunhosAntigos = [];  // não de hoje
+  const rascunhosHoje = [];     // de hoje
 
-  // Auto-descartar rascunhos com mais de 24h
-  if (idadeMinutos > 24 * 60) {
-    await apagarRascunhoIDB();
-    return;
-  }
+  // Limpar rascunhos com mais de 60 dias (sanitização)
+  const limiteAntigo = Date.now() - (60 * 24 * 60 * 60 * 1000);
 
-  // Verificar se vale a pena recuperar (tem algum dado relevante?)
-  const temDados = (r.formData && (r.formData.planoNum || r.formData.numSerie)) ||
-                   (r.fotos && r.fotos.length > 0) ||
-                   (r.videosE2 && (r.videosE2.inicio.gravado || r.videosE2.intermedio.gravado || r.videosE2.final.gravado)) ||
-                   (r.checklist && Object.keys(r.checklist).length > 0);
-  if (!temDados) {
-    await apagarRascunhoIDB();
-    return;
-  }
-
-  // Formatar idade
-  let textoIdade;
-  if (idadeMinutos < 60) textoIdade = `há ${Math.round(idadeMinutos)} min`;
-  else textoIdade = `há ${Math.round(idadeMinutos / 60 * 10) / 10}h`;
-
-  // Construir resumo do que foi recuperado
-  const resumo = [];
-  if (r.formData.planoNum) resumo.push(`Plano: ${r.formData.planoNum}`);
-  if (r.formData.numSerie && r.formData.numSerie.trim() !== 'EM') resumo.push(`Série: ${r.formData.numSerie}`);
-  if (r.fotos && r.fotos.length > 0) resumo.push(`${r.fotos.length} foto(s)`);
-  const videosGravados = ['inicio', 'intermedio', 'final'].filter(f => r.videosE2 && r.videosE2[f] && r.videosE2[f].gravado).length;
-  if (videosGravados > 0) resumo.push(`${videosGravados} vídeo(s)`);
-  if (r.checklist && Object.keys(r.checklist).length > 0) resumo.push(`${Object.keys(r.checklist).length} item(s) checklist`);
-  if (r.signatures && (r.signatures.embaresa || r.signatures.cliente)) resumo.push('assinaturas');
-
-  const msg = `Foi encontrado um rascunho ${textoIdade}.\n\n` +
-              (resumo.length ? resumo.join(' • ') + '\n\n' : '') +
-              `Recuperar trabalho anterior?`;
-
-  if (!confirm(msg)) {
-    await apagarRascunhoIDB();
-    return;
-  }
-
-  // Restaurar tudo
-  Object.entries(r.formData || {}).forEach(([k, val]) => {
-    if (val === undefined) return;
-    const el = document.getElementById(k);
-    if (!el) return;
-    if (el.type === 'checkbox') {
-      el.checked = !!val;
+  for (const r of lista) {
+    const v = r.value;
+    const ts = v.timestamp || (v.dataUltimaActividade ? new Date(v.dataUltimaActividade).getTime() : 0);
+    if (ts < limiteAntigo) {
+      await apagarRascunhoIDB(r.key);
+      continue;
+    }
+    // Verificar se tem dados relevantes
+    const temDados = (v.formData && (v.formData.planoNum || v.formData.numSerie)) ||
+                     (v.fotos && v.fotos.length > 0);
+    if (!temDados) {
+      await apagarRascunhoIDB(r.key);
+      continue;
+    }
+    const dataAct = v.dataUltimaActividade ? new Date(v.dataUltimaActividade) : new Date(ts);
+    if (dataAct.toDateString() === hoje) {
+      rascunhosHoje.push(r);
     } else {
-      el.value = val;
+      rascunhosAntigos.push(r);
     }
-  });
-  state.fotos = r.fotos || [];
-  if (r.fotos && r.fotos.length > 0) {
-    nextPhotoId = Math.max(...r.fotos.map(f => f.id)) + 1;
-  }
-  state.checklist = r.checklist || {};
-  if (r.videosE2) state.videosE2 = r.videosE2;
-  state.signatures = r.signatures || {};
-  if (r.cronometro) state.cronometro = r.cronometro;
-  if (!state.cronometro) state.cronometro = { inicio: null, fim: null };
-
-  // Se cronómetro tinha início mas não fim, retomar timer live
-  if (state.cronometro.inicio && !state.cronometro.fim) {
-    setTimeout(iniciarLiveTimer, 100);
   }
 
-  // Disparar onPlanoChange e onVideosToggle para reactivar lógica
-  onPlanoChange();
-  if (typeof onVideosToggle === 'function') onVideosToggle();
-  if (typeof atualizarMinFotosSuportes === 'function') atualizarMinFotosSuportes();
+  // 1. Se há rascunhos antigos (de outros dias) → modal forte de aviso
+  if (rascunhosAntigos.length > 0) {
+    setTimeout(() => mostrarModalTrabalhoPendente(rascunhosAntigos), 500);
+  }
 
-  // Re-aplicar checklist visual
-  Object.entries(state.checklist).forEach(([key, value]) => {
-    const item = document.querySelector(`.check-item[data-key="${CSS.escape(key)}"]`);
-    if (item) {
-      const buttons = item.querySelectorAll('.check-options button');
-      buttons.forEach(b => b.classList.remove('sel-ok','sel-nok','sel-na'));
-      const idx = value === 'ok' ? 0 : value === 'nok' ? 1 : 2;
-      if (buttons[idx]) buttons[idx].classList.add('sel-' + value);
+  // 2. Se há rascunhos de hoje → recuperar o mais recente
+  if (rascunhosHoje.length > 0) {
+    rascunhosHoje.sort((a, b) => {
+      const da = new Date(a.value.dataUltimaActividade || a.value.timestamp || 0);
+      const db = new Date(b.value.dataUltimaActividade || b.value.timestamp || 0);
+      return db - da;
+    });
+    const r = rascunhosHoje[0].value;
+    rascunhoActualKey = rascunhosHoje[0].key;
+
+    const idadeMinutos = (Date.now() - new Date(r.dataUltimaActividade || r.timestamp).getTime()) / 60000;
+    let textoIdade = idadeMinutos < 60 ? `há ${Math.round(idadeMinutos)} min` : `há ${Math.round(idadeMinutos / 60 * 10) / 10}h`;
+
+    const resumo = [];
+    if (r.formData?.planoNum) resumo.push(`Plano: ${r.formData.planoNum}`);
+    if (r.formData?.numSerie && r.formData.numSerie.trim() !== '') resumo.push(`Série: ${r.formData.numSerie}`);
+    if (r.fotos?.length > 0) resumo.push(`${r.fotos.length} foto(s)`);
+
+    const msg = `Foi encontrado um rascunho de hoje ${textoIdade}.\n\n` +
+                (resumo.length ? resumo.join(' • ') + '\n\n' : '') +
+                `Recuperar trabalho anterior?`;
+
+    if (!confirm(msg)) {
+      // Utilizador escolheu não recuperar — apagar este e começar do zero
+      await apagarRascunhoIDB(rascunhosHoje[0].key);
+      atualizarContadorRascunhos();
+      return;
     }
-  });
-  if (typeof renderVideosE2 === 'function') renderVideosE2();
-  renderTodasFotos();
 
-  // Atualizar contadores
-  [2,3,4,5].forEach(p => atualizarContadorPasso(p));
-
-  // Saltar para o passo onde o operador estava
-  if (r.currentStep && r.currentStep > 1) {
-    showStep(r.currentStep);
+    // Aplicar este rascunho ao estado
+    await aplicarRascunho(r);
   }
+
+  atualizarContadorRascunhos();
+}
+
+// Modal forte para trabalho de dias anteriores não enviado
+function mostrarModalTrabalhoPendente(rascunhos) {
+  const itensHTML = rascunhos.map(r => {
+    const v = r.value;
+    const f = v.formData || {};
+    const dataAct = v.dataUltimaActividade ? new Date(v.dataUltimaActividade) : null;
+    const dataStr = dataAct ? dataAct.toLocaleString('pt-PT') : '—';
+    const diasAtras = dataAct ? Math.floor((Date.now() - dataAct.getTime()) / (1000*60*60*24)) : 0;
+    const plano = f.planoNum || '—';
+    const planoNome = f.planoNum && PLANOS_DB[f.planoNum] ? PLANOS_DB[f.planoNum].nome.substring(0, 35) : '';
+    const numFotos = (v.fotos || []).length;
+    const passo = v.currentStep || 1;
+    const titulo = r.key.startsWith('TEMP_') ? '(sem série)' : r.key;
+    return `
+      <div style="border:2px solid #ff9800;border-radius:8px;padding:14px;margin-bottom:12px;background:#fff8e1;">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:6px;">
+          <div style="flex:1;">
+            <div style="font-weight:700;color:#e65100;font-size:1.05rem;">⚠️ ${escapeHtml(titulo)}</div>
+            <div style="font-size:0.88rem;color:#5d4037;">${escapeHtml(plano)} ${planoNome ? '— ' + escapeHtml(planoNome) : ''}</div>
+          </div>
+          <span style="background:#dc3545;color:white;padding:2px 8px;border-radius:4px;font-size:0.75rem;font-weight:bold;">${diasAtras}d atrás</span>
+        </div>
+        <div style="font-size:0.82rem;color:#666;margin-bottom:10px;">
+          📍 Passo ${passo} • 📷 ${numFotos} foto${numFotos !== 1 ? 's' : ''} • 🕒 ${escapeHtml(dataStr)}
+        </div>
+        <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" onclick="abrirRascunho('${r.key}');document.getElementById('modalPendente').remove();">📂 Continuar este</button>
+          <button class="btn btn-secondary btn-sm" style="background:#dc3545;color:white;border:none;" onclick="if(confirm('Descartar definitivamente?')){apagarRascunhoIDB('${r.key}').then(()=>{document.getElementById('modalPendente').remove();atualizarContadorRascunhos();});}">🗑️ Descartar</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  let modal = document.getElementById('modalPendente');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'modalPendente';
+  modal.className = 'modal-overlay active';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:600px;max-height:85vh;overflow:auto;border-top:6px solid #ff9800;">
+      <h3 style="margin-top:0;color:#e65100;">⚠️ TRABALHO PENDENTE DE DIAS ANTERIORES</h3>
+      <p style="font-size:0.92rem;color:#333;line-height:1.5;">
+        Há ${rascunhos.length} ${rascunhos.length === 1 ? 'relatório por enviar' : 'relatórios por enviar'} de dias anteriores. <br>
+        <strong>Decida o que fazer com cada um antes de continuar:</strong>
+      </p>
+      <div>${itensHTML}</div>
+      <div style="text-align:right;margin-top:10px;">
+        <button class="btn btn-secondary" onclick="document.getElementById('modalPendente').remove()">Decidir mais tarde</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
 }
 
 // ============================================
@@ -3312,7 +3840,9 @@ function carregarDadosRelatorio(dados) {
   // Restaurar cronómetro (se existir)
   if (dados.cronometro) state.cronometro = dados.cronometro;
   // Garantir que existe
-  if (!state.cronometro) state.cronometro = { inicio: null, fim: null };
+  if (!state.cronometro) state.cronometro = { sessoes: [], emPausa: false };
+  // Normalizar formato (compatibilidade com relatórios v1.5.2 e anteriores)
+  normalizarCronometro();
   // Em Modo Revisão, parar timer live (relatório já está finalizado)
   if (typeof pararLiveTimer === 'function') pararLiveTimer();
 
@@ -3366,11 +3896,37 @@ function mostrarBannerModoEdicao(nomeFicheiro) {
   banner.innerHTML = `📝 <strong>Modo Revisão</strong> — a editar relatório recebido (<code style="font-size:0.85rem;background:rgba(255,255,255,0.6);padding:2px 6px;border-radius:3px;">${escapeHtml(nomeFicheiro)}</code>) — quando concluir, gere o relatório actualizado no Passo 8`;
 }
 
-function novoRelatorio() {
-  if (!confirm('Limpar todos os dados e começar um relatório novo?')) return;
+async function novoRelatorio() {
+  // ⚠️ Verificar se há trabalho não enviado neste momento
+  const d = getDados();
+  const temDados = d.planoNum || (d.numSerie && d.numSerie !== '—') || state.fotos.length > 0;
+
+  if (temDados) {
+    // Há trabalho activo — confirmar com diálogo claro
+    const serie = d.numSerie !== '—' ? d.numSerie : '(sem série)';
+    const plano = d.planoNum || '(sem plano)';
+    const numFotos = state.fotos.length;
+    const msg = '⚠️ Há trabalho em curso:\n\n' +
+                `• ${plano} — ${serie}\n` +
+                `• ${numFotos} foto${numFotos !== 1 ? 's' : ''}\n\n` +
+                'Este trabalho será GUARDADO automaticamente (pode aceder depois em "📂 Rascunhos").\n\n' +
+                'Deseja começar um novo relatório agora?';
+    if (!confirm(msg)) return;
+
+    // Forçar gravação imediata do rascunho actual antes de limpar
+    await autoSave(true);
+  }
+
+  // Limpar estado para novo relatório (mas SEM apagar o rascunho do IndexedDB)
+  await limparEstadoParaNovo();
+}
+
+async function limparEstadoParaNovo() {
   // Remover banner do Modo Revisão se existir
   const banner = document.getElementById('bannerModoEdicao');
   if (banner) banner.remove();
+  // Resetar a chave do rascunho actual (próxima gravação será nova entrada)
+  rascunhoActualKey = null;
   // Limpar inputs
   document.querySelectorAll('input, select, textarea').forEach(el => {
     if (el.type === 'file') return;
@@ -3392,7 +3948,7 @@ function novoRelatorio() {
   };
   state.checklist = {};
   state.signatures = {};
-  state.cronometro = { inicio: null, fim: null };
+  state.cronometro = { sessoes: [], emPausa: false };
   state.currentStep = 1;
   // Parar timer live
   if (typeof pararLiveTimer === 'function') pararLiveTimer();
@@ -3413,7 +3969,260 @@ function novoRelatorio() {
   showStep(1);
   localStorage.removeItem('relatorioEmbalamentoRascunho');
   localStorage.removeItem('relatorioCampoRascunho');
-  apagarRascunhoIDB();  // limpar rascunho IndexedDB
+  // NOTA: NÃO apagamos rascunhos do IndexedDB — ficam disponíveis em "📂 Rascunhos"
+  atualizarContadorRascunhos();
+}
+
+async function atualizarContadorRascunhos() {
+  try {
+    const lista = await listarRascunhosIDB();
+    const contador = document.getElementById('contadorRascunhos');
+    if (!contador) return;
+    if (lista.length > 0) {
+      contador.style.display = 'inline-block';
+      contador.textContent = lista.length;
+    } else {
+      contador.style.display = 'none';
+    }
+  } catch (e) {}
+}
+
+// ============================================
+// LISTA DE RASCUNHOS (modal)
+// ============================================
+async function abrirListaRascunhos() {
+  const lista = await listarRascunhosIDB();
+  const hoje = new Date().toDateString();
+  const ontem = new Date(Date.now() - 24*60*60*1000).toDateString();
+
+  let modal = document.getElementById('modalRascunhos');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'modalRascunhos';
+  modal.className = 'modal-overlay active';
+
+  if (lista.length === 0) {
+    modal.innerHTML = `
+      <div class="modal-card" style="max-width:500px;">
+        <h3 style="margin-top:0;color:#1a1a2e;">📂 Rascunhos guardados</h3>
+        <p style="text-align:center;color:#888;padding:20px;">Sem rascunhos guardados.</p>
+        <div style="text-align:right;">
+          <button class="btn btn-secondary" onclick="document.getElementById('modalRascunhos').remove()">Fechar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    return;
+  }
+
+  // Ordenar por mais recente
+  lista.sort((a, b) => {
+    const da = a.value.dataUltimaActividade || a.value.timestamp || 0;
+    const db = b.value.dataUltimaActividade || b.value.timestamp || 0;
+    return new Date(db) - new Date(da);
+  });
+
+  const itensHTML = lista.map(r => {
+    const v = r.value;
+    const f = v.formData || {};
+    const dataAct = v.dataUltimaActividade ? new Date(v.dataUltimaActividade) : null;
+    const dataStr = dataAct ? dataAct.toLocaleString('pt-PT') : '—';
+    const isHoje = dataAct && dataAct.toDateString() === hoje;
+    const isOntem = dataAct && dataAct.toDateString() === ontem;
+    const tagData = isHoje ? '<span style="background:#28a745;color:white;padding:1px 6px;border-radius:4px;font-size:0.7rem;">HOJE</span>'
+                  : isOntem ? '<span style="background:#ff9800;color:white;padding:1px 6px;border-radius:4px;font-size:0.7rem;">ONTEM</span>'
+                  : `<span style="background:#dc3545;color:white;padding:1px 6px;border-radius:4px;font-size:0.7rem;">${dataAct ? Math.floor((Date.now() - dataAct.getTime()) / (1000*60*60*24)) + 'd' : '?'}</span>`;
+    const isAtivo = r.key === rascunhoActualKey;
+    const ehTemp = r.key.startsWith('TEMP_');
+    const tituloChave = ehTemp ? '(rascunho sem série)' : r.key;
+    const plano = f.planoNum || '—';
+    const planoNome = f.planoNum && PLANOS_DB[f.planoNum] ? PLANOS_DB[f.planoNum].nome : '';
+    const passo = v.currentStep || 1;
+    const numFotos = (v.fotos || []).length;
+    return `
+      <div style="border:1px solid ${isAtivo ? '#28a745' : '#ddd'};border-radius:8px;padding:12px;margin-bottom:10px;background:${isAtivo ? '#e8f5e9' : 'white'};">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:6px;">
+          <div style="flex:1;">
+            <div style="font-weight:600;color:#1a1a2e;">${escapeHtml(tituloChave)} ${isAtivo ? '✅ activo' : ''}</div>
+            <div style="font-size:0.85rem;color:#666;">${escapeHtml(plano)}${planoNome ? ' — ' + escapeHtml(planoNome.substring(0, 40)) : ''}</div>
+          </div>
+          ${tagData}
+        </div>
+        <div style="font-size:0.8rem;color:#888;margin-bottom:8px;">
+          📍 Passo ${passo} • 📷 ${numFotos} foto${numFotos !== 1 ? 's' : ''} • 🕒 ${escapeHtml(dataStr)}
+        </div>
+        <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;">
+          ${!isAtivo ? `<button class="btn btn-primary btn-sm" onclick="abrirRascunho('${r.key}')">📂 Abrir</button>` : ''}
+          <button class="btn btn-secondary btn-sm" style="background:#dc3545;color:white;border:none;" onclick="confirmarApagarRascunho('${r.key}', '${escapeHtml(tituloChave).replace(/'/g, "\\\\'")}')">🗑️ Descartar</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:600px;max-height:85vh;overflow:auto;">
+      <h3 style="margin-top:0;color:#1a1a2e;">📂 Rascunhos guardados (${lista.length})</h3>
+      <p style="font-size:0.85rem;color:#666;">Cada rascunho é um relatório em curso. Pode abrir para continuar ou descartar.</p>
+      <div>${itensHTML}</div>
+      <div style="text-align:right;margin-top:10px;">
+        <button class="btn btn-secondary" onclick="document.getElementById('modalRascunhos').remove()">Fechar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function abrirRascunho(key) {
+  // Guardar primeiro o rascunho actual se houver dados
+  const d = getDados();
+  const temDados = d.planoNum || (d.numSerie && d.numSerie !== '—') || state.fotos.length > 0;
+  if (temDados) {
+    await autoSave(true);
+  }
+  // Carregar o rascunho seleccionado
+  const r = await lerRascunhoEspecificoIDB(key);
+  if (!r) {
+    alert('Não foi possível abrir esse rascunho.');
+    return;
+  }
+  rascunhoActualKey = key;
+  document.getElementById('modalRascunhos')?.remove();
+  await aplicarRascunho(r);
+  mostrarToast('📂 Rascunho aberto');
+}
+
+async function confirmarApagarRascunho(key, titulo) {
+  if (!confirm(`Descartar definitivamente o rascunho "${titulo}"?\n\nEsta acção não pode ser desfeita.`)) return;
+  await apagarRascunhoIDB(key);
+  await abrirListaRascunhos();  // re-render
+  atualizarContadorRascunhos();
+}
+
+// Aplicar dados de um rascunho ao estado (factorizado de tentarRecuperarRascunho)
+async function aplicarRascunho(r) {
+  Object.entries(r.formData || {}).forEach(([k, val]) => {
+    if (val === undefined) return;
+    const el = document.getElementById(k);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!val;
+    else el.value = val;
+  });
+  state.fotos = r.fotos || [];
+  if (r.fotos && r.fotos.length > 0) {
+    nextPhotoId = Math.max(...r.fotos.map(f => f.id)) + 1;
+  }
+  state.checklist = r.checklist || {};
+  if (r.videosE2) state.videosE2 = r.videosE2;
+  state.signatures = r.signatures || {};
+  if (r.cronometro) state.cronometro = r.cronometro;
+  if (!state.cronometro) state.cronometro = { sessoes: [], emPausa: false };
+  normalizarCronometro();
+
+  if (temSessaoEmCurso()) {
+    setTimeout(() => { iniciarLiveTimer(); verificarMudancaDeDia(); }, 100);
+  } else if (state.cronometro.sessoes.length > 0 && state.cronometro.emPausa) {
+    setTimeout(iniciarLiveTimer, 100);
+  }
+
+  onPlanoChange();
+  if (typeof onVideosToggle === 'function') onVideosToggle();
+  if (typeof atualizarMinFotosSuportes === 'function') atualizarMinFotosSuportes();
+  Object.entries(state.checklist).forEach(([key, value]) => {
+    const item = document.querySelector(`.check-item[data-key="${CSS.escape(key)}"]`);
+    if (item) {
+      const buttons = item.querySelectorAll('.check-options button');
+      buttons.forEach(b => b.classList.remove('sel-ok','sel-nok','sel-na'));
+      const idx = value === 'ok' ? 0 : value === 'nok' ? 1 : 2;
+      if (buttons[idx]) buttons[idx].classList.add('sel-' + value);
+    }
+  });
+  if (typeof renderVideosE2 === 'function') renderVideosE2();
+  renderTodasFotos();
+  [2,3,4,5].forEach(p => atualizarContadorPasso(p));
+  if (r.currentStep && r.currentStep > 1) {
+    showStep(r.currentStep);
+  } else {
+    showStep(1);
+  }
+}
+
+// ============================================
+// HISTÓRICO DE ENVIADOS (modal)
+// ============================================
+async function abrirHistoricoEnviados() {
+  const lista = await listarEnviados();
+  let modal = document.getElementById('modalHistorico');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'modalHistorico';
+  modal.className = 'modal-overlay active';
+
+  if (lista.length === 0) {
+    modal.innerHTML = `
+      <div class="modal-card" style="max-width:500px;">
+        <h3 style="margin-top:0;color:#1a1a2e;">📚 Histórico de relatórios enviados</h3>
+        <p style="text-align:center;color:#888;padding:20px;">Sem relatórios enviados nos últimos ${DIAS_HISTORICO} dias.</p>
+        <div style="text-align:right;">
+          <button class="btn btn-secondary" onclick="document.getElementById('modalHistorico').remove()">Fechar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    return;
+  }
+
+  const itensHTML = lista.map(r => {
+    const dataStr = new Date(r.dataEnvio).toLocaleString('pt-PT');
+    return `
+      <div style="border:1px solid #ddd;border-radius:8px;padding:12px;margin-bottom:10px;background:white;">
+        <div style="font-weight:600;color:#1a1a2e;">${escapeHtml(r.numSerie || '—')} • ${escapeHtml(r.planoNum || '—')}</div>
+        <div style="font-size:0.85rem;color:#666;">${escapeHtml((r.planoNome || '').substring(0, 60))}</div>
+        <div style="font-size:0.8rem;color:#888;margin-top:4px;">📅 Enviado em ${escapeHtml(dataStr)} por ${escapeHtml(r.operadorEmbaresa || '—')}</div>
+        <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" onclick="reabrirRelatorioEnviado('${r.key}')">📄 Reabrir / Reenviar</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:600px;max-height:85vh;overflow:auto;">
+      <h3 style="margin-top:0;color:#1a1a2e;">📚 Histórico de relatórios enviados (${lista.length})</h3>
+      <p style="font-size:0.85rem;color:#666;">Últimos ${MAX_HISTORICO} relatórios dos últimos ${DIAS_HISTORICO} dias. Pode reabrir para reenviar.</p>
+      <div>${itensHTML}</div>
+      <div style="text-align:right;margin-top:10px;">
+        <button class="btn btn-secondary" onclick="document.getElementById('modalHistorico').remove()">Fechar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function reabrirRelatorioEnviado(key) {
+  try {
+    const db = await abrirIndexedDB();
+    const r = await new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE_ENVIADOS, 'readonly');
+      const req = tx.objectStore(DB_STORE_ENVIADOS).get(key);
+      req.onsuccess = () => resolve(req.result);
+    });
+    if (!r || !r.html) {
+      alert('Não foi possível recuperar este relatório.');
+      return;
+    }
+    // Descarregar o HTML
+    const blob = new Blob([r.html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const dataFile = new Date(r.dataEnvio).toISOString().split('T')[0];
+    const snFile = (r.numSerie || 'sem').replace(/\s+/g,'-').replace(/[^a-zA-Z0-9-]/g,'');
+    const fileName = `Relatorio_${snFile}_${(r.planoNum || '').replace(/\s+/g,'_')}_${dataFile}.html`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    document.getElementById('modalHistorico')?.remove();
+    mostrarToast('📄 Relatório descarregado: ' + fileName);
+  } catch (e) {
+    console.error('Erro ao reabrir:', e);
+    alert('Erro ao recuperar relatório: ' + e.message);
+  }
 }
 
 // ============================================
