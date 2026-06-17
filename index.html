@@ -1,4 +1,33 @@
 <!DOCTYPE html>
+<!--
+  ═══════════════════════════════════════════════════════════════════
+  EMBARESA QC — MANIFESTO DE INDEPENDÊNCIA
+  ═══════════════════════════════════════════════════════════════════
+  Esta app é DELIBERADAMENTE 100% self-contained.
+
+  ⛔ NÃO ADICIONAR:
+     - <script src="https://..."> (ex: Babel, React, jQuery, lodash)
+     - <link rel="stylesheet" href="https://..."> (Bootstrap, Tailwind CDN)
+     - imports de unpkg.com, jsdelivr.net, cdnjs.cloudflare.com
+     - <iframe src> de domínios externos
+
+  ✅ PORQUÊ:
+     Em 16/06/2026, Babel 8.0 foi lançado e quebrou a app de Produção
+     (que usava @babel/standalone sem pin de versão). Esta app QC
+     sobreviveu porque não depende de CDNs externos.
+
+  ✅ EXCEPÇÕES PERMITIDAS:
+     - fetch() ao Power Automate (APIs dinâmicas, não scripts)
+     - Service worker (local, próprio domínio)
+     - manifest.json e ícones (locais)
+
+  ✅ SE PRECISAR DE BIBLIOTECA NOVA:
+     1. Descarregar versão estável fixa
+     2. Incorporar inline no <script> ou pasta /lib local
+     3. Nunca puxar de CDN externo sem pin de versão exacta
+
+  ═══════════════════════════════════════════════════════════════════
+-->
 <html lang="pt">
 <head>
 <meta charset="UTF-8">
@@ -655,6 +684,7 @@
     <button class="btn btn-secondary btn-sm" onclick="abrirListaRascunhos()">📂 Rascunhos <span id="contadorRascunhos" style="background:#ff9800;color:white;border-radius:10px;padding:1px 6px;font-size:0.75rem;font-weight:bold;display:none;margin-left:3px;">0</span></button>
     <button class="btn btn-secondary btn-sm" onclick="abrirHistoricoEnviados()">📚 Enviados</button>
     <button class="btn btn-secondary btn-sm" onclick="abrirRelatorioExistente()">📁 Abrir HTML</button>
+    <button class="btn btn-secondary btn-sm" onclick="abrirDefinicoes()">⚙️ Definições</button>
     <button class="btn btn-secondary btn-sm" onclick="abrirAjuda()">❓ Ajuda</button>
     <button class="btn btn-sm" id="btnInstalarPWA" style="background:linear-gradient(135deg,#28a745,#1e7e34);color:#fff;display:none;">📲 Instalar</button>
   </div>
@@ -1141,10 +1171,401 @@ const CONFIG = {
   // Se configurado, aparece botão "🔄 Buscar Vídeo Recente" nos campos E2
   powerAutomateEndpoint: '',  // Ex: 'https://prod-XX.westeurope.logic.azure.com:443/workflows/...'
 
+  // Endpoint Power Automate "URL_CONFIG" — lê ConfigColaboradores do Excel
+  // É o MESMO fluxo da app Produção (acao: 'lerConfigs')
+  urlConfigPowerAutomate: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/464482ea19714e50b858771991c0539d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=H29XBCpPy1dyMk7Gyj6LAWy8RKI8Q4mpUFdI5qanNKU',
+
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.5.4'
+  versao: '1.5.5'
 };
 // ============================================
+
+// Lista de operadores padrão (carregada apenas se não houver lista guardada nas Definições)
+// Fonte: ficheiro Configuracoes_App_Producao.xlsx (folha ConfigColaboradores, Ativo=True)
+const OPERADORES_DEFAULT = [
+  'André Avelino Tavares Rocha',
+  'Bruno Santos',
+  'Hilenio Miranda',
+  'Joaquim Comenda',
+  'José Victor',
+  'Nuno Rafael Pereira Franco',
+  'Pedro Ganso',
+  'Pedro Miguel Serranito Familia',
+  'Rui Miguel Charrua Richáu',
+  'Taffaly carolina Reis',
+  'Valdir Tavares',
+  'William Chaves Inaba'
+];
+
+const CLIENTES_DEFAULT = [
+  'ANN Évora Estruturas Metálicas, S.A.',
+  'ANN Évora Estruturas em Compositos, S.A.'
+];
+
+// ============================================
+// GESTÃO DE DEFINIÇÕES (localStorage)
+// ============================================
+// As definições são guardadas em localStorage com a chave 'embaresaQC_config'
+// Estrutura: { operadores: [...], clientes: [...], emailDestino: '...' }
+function getConfigOperadores() {
+  try {
+    const raw = localStorage.getItem('embaresaQC_config');
+    if (raw) {
+      const cfg = JSON.parse(raw);
+      if (Array.isArray(cfg.operadores) && cfg.operadores.length > 0) {
+        return cfg.operadores;
+      }
+    }
+  } catch (e) {}
+  return OPERADORES_DEFAULT.slice();
+}
+
+function getConfigClientes() {
+  try {
+    const raw = localStorage.getItem('embaresaQC_config');
+    if (raw) {
+      const cfg = JSON.parse(raw);
+      if (Array.isArray(cfg.clientes) && cfg.clientes.length > 0) {
+        return cfg.clientes;
+      }
+    }
+  } catch (e) {}
+  return CLIENTES_DEFAULT.slice();
+}
+
+function getConfigEmailDestino() {
+  try {
+    const raw = localStorage.getItem('embaresaQC_config');
+    if (raw) {
+      const cfg = JSON.parse(raw);
+      if (cfg.emailDestino) return cfg.emailDestino;
+    }
+  } catch (e) {}
+  return CONFIG.emailDestino;
+}
+
+function gravarConfig(cfg) {
+  try {
+    const actual = JSON.parse(localStorage.getItem('embaresaQC_config') || '{}');
+    const merged = Object.assign({}, actual, cfg);
+    localStorage.setItem('embaresaQC_config', JSON.stringify(merged));
+    return true;
+  } catch (e) {
+    console.error('Erro a gravar config:', e);
+    return false;
+  }
+}
+
+// ============================================
+// CARREGAR COLABORADORES DO POWER AUTOMATE (Excel via fluxo URL_CONFIG)
+// ============================================
+// Usa o MESMO fluxo da app de Produção. Devolve lista filtrada de operadores activos.
+// Cache de 1 hora — só refaz fetch ao Power Automate quando passou esse tempo.
+async function carregarColaboradoresFromPowerAutomate(forcar) {
+  const cache = localStorage.getItem('embaresaQC_colabsCache');
+  const cacheTime = parseInt(localStorage.getItem('embaresaQC_colabsCacheTime') || '0');
+  const idade = Date.now() - cacheTime;
+  const cacheValido = cache && cacheTime && idade < 3600000;  // 1 hora
+
+  if (cacheValido && !forcar) {
+    console.log('[Config] Colaboradores do cache (idade:', Math.round(idade / 60000), 'min)');
+    return JSON.parse(cache);
+  }
+
+  if (!CONFIG.urlConfigPowerAutomate) {
+    console.log('[Config] URL Power Automate não configurada — usando lista padrão');
+    return null;
+  }
+
+  try {
+    const resp = await fetch(CONFIG.urlConfigPowerAutomate, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acao: 'lerConfigs' })
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const dados = await resp.json();
+
+    // O fluxo devolve array plano — extrair colaboradores activos
+    let colaboradores = [];
+    if (Array.isArray(dados)) {
+      colaboradores = dados.filter(i => {
+        if (!i.Nome || !i.Turno) return false;
+        const ativo = String(i.Ativo || '').toLowerCase() === 'sim' || i.Ativo === true;
+        if (ativo) return true;
+        // Não activo — verificar se data de saída ainda não chegou
+        const ds = i.DataSaida || i.dataSaida || '';
+        if (!ds) return false;
+        const hoje = new Date(); hoje.setHours(0,0,0,0);
+        const dataSaida = new Date(ds); dataSaida.setHours(0,0,0,0);
+        return hoje < dataSaida;
+      });
+    } else if (dados.colaboradores && Array.isArray(dados.colaboradores)) {
+      colaboradores = dados.colaboradores.filter(i => {
+        const ativo = String(i.Ativo || '').toLowerCase() === 'sim' || i.Ativo === true;
+        return ativo;
+      });
+    }
+
+    // Extrair só o nome e ordenar
+    const nomes = colaboradores
+      .map(c => (c.Nome || c.nome || '').trim())
+      .filter(n => n.length > 0)
+      .sort((a, b) => a.localeCompare(b, 'pt'));
+
+    if (nomes.length === 0) {
+      console.warn('[Config] Power Automate devolveu lista vazia.');
+      return null;
+    }
+
+    // Gravar em cache
+    localStorage.setItem('embaresaQC_colabsCache', JSON.stringify(nomes));
+    localStorage.setItem('embaresaQC_colabsCacheTime', String(Date.now()));
+    console.log('[Config] ' + nomes.length + ' colaboradores carregados do Excel via Power Automate.');
+    return nomes;
+  } catch (e) {
+    console.warn('[Config] Falha a carregar do Power Automate:', e.message);
+    // Se há cache (mesmo expirado), devolver
+    if (cache) {
+      console.log('[Config] A usar cache antigo.');
+      return JSON.parse(cache);
+    }
+    return null;
+  }
+}
+
+// Substitui a lista de operadores no config local pelos vindos do Power Automate
+async function sincronizarColaboradoresComExcel(forcar) {
+  const nomes = await carregarColaboradoresFromPowerAutomate(forcar);
+  if (!nomes) return false;
+  gravarConfig({ operadores: nomes });
+  repopularDropdownsOperadores();
+  return true;
+}
+
+// Repopular os dropdowns dos operadores com a lista actual da config
+function repopularDropdownsOperadores() {
+  const lista = getConfigOperadores();
+  // Manter selecção actual se a pessoa ainda existir
+  ['operadorEmbaresa', 'operadorEmbaresa2'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const valorActual = sel.value;
+    sel.innerHTML = '<option value="">— Seleccionar operador —</option>' +
+      lista.map(nome => `<option value="${escapeHtml(nome)}">${escapeHtml(nome)}</option>`).join('');
+    if (valorActual && lista.includes(valorActual)) sel.value = valorActual;
+  });
+}
+
+function repopularDropdownClientes() {
+  const lista = getConfigClientes();
+  const sel = document.getElementById('cliente');
+  if (!sel) return;
+  const valorActual = sel.value;
+  sel.innerHTML = lista.map(nome => `<option value="${escapeHtml(nome)}">${escapeHtml(nome)}</option>`).join('');
+  if (valorActual && lista.includes(valorActual)) sel.value = valorActual;
+}
+
+// ============================================
+// MODAL DEFINIÇÕES
+// ============================================
+function abrirDefinicoes() {
+  const operadores = getConfigOperadores();
+  const clientes = getConfigClientes();
+  const emailDest = getConfigEmailDestino();
+
+  let modal = document.getElementById('modalDefinicoes');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'modalDefinicoes';
+  modal.className = 'modal-overlay active';
+
+  const opsHTML = operadores.map((nome, idx) => `
+    <div class="def-item" data-idx="${idx}">
+      <span class="def-item-name">${escapeHtml(nome)}</span>
+      <button class="def-item-del" onclick="removerOperador(${idx})" title="Remover">🗑️</button>
+    </div>
+  `).join('');
+
+  const cliHTML = clientes.map((nome, idx) => `
+    <div class="def-item" data-idx="${idx}">
+      <span class="def-item-name">${escapeHtml(nome)}</span>
+      <button class="def-item-del" onclick="removerCliente(${idx})" title="Remover">🗑️</button>
+    </div>
+  `).join('');
+
+  modal.innerHTML = `
+    <style>
+      .def-section { background:#f8f9fa; border-radius:8px; padding:14px; margin-bottom:16px; }
+      .def-section h4 { margin:0 0 10px 0; color:#1a1a2e; font-size:1rem; }
+      .def-list { background:white; border:1px solid #e0e0e0; border-radius:6px; max-height:240px; overflow-y:auto; margin-bottom:10px; }
+      .def-item { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; border-bottom:1px solid #eee; }
+      .def-item:last-child { border-bottom:none; }
+      .def-item-name { flex:1; font-size:0.9rem; color:#333; }
+      .def-item-del { background:none; border:none; cursor:pointer; font-size:1.1rem; padding:2px 6px; border-radius:4px; }
+      .def-item-del:hover { background:#ffebee; }
+      .def-add-row { display:flex; gap:8px; }
+      .def-add-row input { flex:1; padding:8px; border:1px solid #ddd; border-radius:6px; font-size:0.9rem; }
+      .def-add-row button { padding:8px 16px; background:#28a745; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600; }
+      .def-add-row button:hover { background:#218838; }
+      .def-info { font-size:0.78rem; color:#666; margin-top:4px; }
+    </style>
+    <div class="modal-card" style="max-width:650px;max-height:90vh;overflow:auto;">
+      <h3 style="margin-top:0;color:#1a1a2e;">⚙️ Definições</h3>
+      <p style="font-size:0.85rem;color:#666;">Edite a lista de operadores, clientes e email destino. As alterações ficam guardadas neste dispositivo.</p>
+
+      <div class="def-section">
+        <h4>👥 Operadores Embaresa (${operadores.length})</h4>
+        <div style="background:#e3f2fd;border:1px solid #2196f3;border-radius:6px;padding:10px;margin-bottom:10px;font-size:0.85rem;color:#0d47a1;">
+          🔗 <strong>Sincronizado com o Excel da Embaresa</strong> (fluxo Power Automate URL_CONFIG)<br>
+          <span id="defStatusSync" style="font-size:0.78rem;color:#666;">A verificar...</span>
+          <div style="margin-top:6px;">
+            <button class="btn btn-sm" onclick="forcarSincColaboradores()" style="background:#2196f3;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:0.82rem;">🔄 Sincronizar agora</button>
+          </div>
+        </div>
+        <div class="def-list" id="defListOperadores">${opsHTML}</div>
+        <div class="def-add-row">
+          <input type="text" id="novoOperadorInput" placeholder="Nome completo do operador" />
+          <button onclick="adicionarOperador()">+ Adicionar manualmente</button>
+        </div>
+        <div class="def-info">A lista é sincronizada do Excel a cada hora. Pode também adicionar/remover manualmente, mas as alterações serão perdidas na próxima sincronização.</div>
+      </div>
+
+      <div class="def-section">
+        <h4>🏢 Clientes (${clientes.length})</h4>
+        <div class="def-list" id="defListClientes">${cliHTML}</div>
+        <div class="def-add-row">
+          <input type="text" id="novoClienteInput" placeholder="Nome completo do cliente" />
+          <button onclick="adicionarCliente()">+ Adicionar</button>
+        </div>
+        <div class="def-info">Estes nomes aparecem no dropdown "Cliente" no Passo 1.</div>
+      </div>
+
+      <div class="def-section">
+        <h4>📧 Email destino</h4>
+        <div class="def-add-row">
+          <input type="email" id="emailDestinoInput" value="${escapeHtml(emailDest)}" placeholder="email@embaresa.com" />
+          <button onclick="guardarEmailDestino()">💾 Guardar</button>
+        </div>
+        <div class="def-info">Email para onde os relatórios são enviados (você, que depois reencaminha à Aernnova).</div>
+      </div>
+
+      <div class="def-section" style="background:#fff3e0;border:1px solid #ffb74d;">
+        <h4 style="color:#e65100;">↩️ Restaurar valores padrão</h4>
+        <p style="font-size:0.82rem;color:#5d4037;margin-bottom:8px;">Volta às listas padrão (12 operadores e 2 clientes Aernnova). Útil se algo correr mal.</p>
+        <button class="btn btn-secondary" onclick="restaurarConfigPadrao()" style="background:#ff9800;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;">↩️ Restaurar padrão</button>
+      </div>
+
+      <div style="text-align:right;margin-top:10px;">
+        <button class="btn btn-primary" onclick="fecharDefinicoes()">Fechar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  setTimeout(atualizarStatusSinc, 50);
+}
+
+function fecharDefinicoes() {
+  document.getElementById('modalDefinicoes')?.remove();
+  repopularDropdownsOperadores();
+  repopularDropdownClientes();
+}
+
+function adicionarOperador() {
+  const input = document.getElementById('novoOperadorInput');
+  const nome = (input?.value || '').trim();
+  if (!nome) { alert('Indique o nome do operador.'); return; }
+  const operadores = getConfigOperadores();
+  if (operadores.includes(nome)) {
+    alert('Este operador já está na lista.');
+    return;
+  }
+  operadores.push(nome);
+  operadores.sort((a, b) => a.localeCompare(b, 'pt'));
+  gravarConfig({ operadores });
+  abrirDefinicoes();  // re-render
+}
+
+function removerOperador(idx) {
+  const operadores = getConfigOperadores();
+  const nome = operadores[idx];
+  if (!nome) return;
+  if (!confirm(`Remover "${nome}" da lista de operadores?`)) return;
+  operadores.splice(idx, 1);
+  gravarConfig({ operadores });
+  abrirDefinicoes();  // re-render
+}
+
+function adicionarCliente() {
+  const input = document.getElementById('novoClienteInput');
+  const nome = (input?.value || '').trim();
+  if (!nome) { alert('Indique o nome do cliente.'); return; }
+  const clientes = getConfigClientes();
+  if (clientes.includes(nome)) {
+    alert('Este cliente já está na lista.');
+    return;
+  }
+  clientes.push(nome);
+  gravarConfig({ clientes });
+  abrirDefinicoes();
+}
+
+function removerCliente(idx) {
+  const clientes = getConfigClientes();
+  const nome = clientes[idx];
+  if (!nome) return;
+  if (!confirm(`Remover "${nome}" da lista de clientes?`)) return;
+  clientes.splice(idx, 1);
+  gravarConfig({ clientes });
+  abrirDefinicoes();
+}
+
+function guardarEmailDestino() {
+  const input = document.getElementById('emailDestinoInput');
+  const email = (input?.value || '').trim();
+  if (!email) { alert('Indique um email.'); return; }
+  if (!email.includes('@')) { alert('Email inválido.'); return; }
+  gravarConfig({ emailDestino: email });
+  mostrarToast('✅ Email destino guardado: ' + email);
+}
+
+function restaurarConfigPadrao() {
+  if (!confirm('Restaurar TODAS as listas para os valores padrão?\n\nIsto vai substituir as suas alterações.')) return;
+  localStorage.removeItem('embaresaQC_config');
+  abrirDefinicoes();
+  mostrarToast('↩️ Definições restauradas');
+}
+
+async function forcarSincColaboradores() {
+  const statusEl = document.getElementById('defStatusSync');
+  if (statusEl) statusEl.textContent = '🔄 A sincronizar com Excel...';
+  const ok = await sincronizarColaboradoresComExcel(true);
+  if (ok) {
+    mostrarToast('✅ Lista sincronizada com o Excel');
+    abrirDefinicoes();  // re-render
+  } else {
+    if (statusEl) statusEl.textContent = '⚠️ Não foi possível sincronizar (sem rede ou fluxo indisponível)';
+    mostrarToast('⚠️ Sincronização falhou. A usar lista local.');
+  }
+}
+
+// Mostrar estado actual da sincronização no modal
+function atualizarStatusSinc() {
+  const statusEl = document.getElementById('defStatusSync');
+  if (!statusEl) return;
+  const cacheTime = parseInt(localStorage.getItem('embaresaQC_colabsCacheTime') || '0');
+  if (!cacheTime) {
+    statusEl.textContent = '⚠️ Nunca sincronizado — clique em "Sincronizar agora"';
+    return;
+  }
+  const idade = Date.now() - cacheTime;
+  const minutos = Math.round(idade / 60000);
+  if (minutos < 60) {
+    statusEl.textContent = `✅ Última sincronização: há ${minutos} min`;
+  } else {
+    const horas = Math.round(minutos / 60);
+    statusEl.textContent = `✅ Última sincronização: há ${horas}h`;
+  }
+}
 
 // ============================================
 // BASE DE DADOS DE PLANOS E CLIENTES
@@ -1259,7 +1680,18 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('dataEmbalamento').valueAsDate = new Date();
   // Pré-preencher email destino a partir do CONFIG
   const emailEl = document.getElementById('emailCliente');
-  if (emailEl && CONFIG.emailDestino) emailEl.value = CONFIG.emailDestino;
+  if (emailEl) emailEl.value = getConfigEmailDestino();
+
+  // Carregar listas de operadores e clientes da config (localStorage)
+  repopularDropdownsOperadores();
+  repopularDropdownClientes();
+
+  // Sincronizar colaboradores com o Excel via Power Automate (não bloqueia, faz em background)
+  setTimeout(() => {
+    sincronizarColaboradoresComExcel(false).then(ok => {
+      if (ok) console.log('[Config] Colaboradores sincronizados com sucesso.');
+    });
+  }, 2000);
 
   renderChecklist();
   setupSignaturePads();
@@ -1899,7 +2331,7 @@ Embaresa PT — Embalamento
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 5000);
 
-    const destEmail = CONFIG.emailDestino;
+    const destEmail = getConfigEmailDestino();
     const mailto = construirMailto(destEmail, subject, body + '\n[Anexar o ficheiro descarregado: ' + fileName + ']');
 
     setTimeout(() => {
@@ -3076,7 +3508,7 @@ Embaresa PT — Embalamento
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 
-  const destEmail = d.emailCliente || CONFIG.emailDestino;
+  const destEmail = d.emailCliente || getConfigEmailDestino();
   const mailto = construirMailto(destEmail, subject, body + '\n[Anexar o ficheiro descarregado: ' + fileName + ']');
 
   setTimeout(async () => {
