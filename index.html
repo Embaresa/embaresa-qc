@@ -683,16 +683,16 @@
     <button class="btn btn-secondary btn-sm" onclick="novoRelatorio()">🔄 Novo</button>
     <button class="btn btn-secondary btn-sm" onclick="abrirListaRascunhos()">📂 Rascunhos <span id="contadorRascunhos" style="background:#ff9800;color:white;border-radius:10px;padding:1px 6px;font-size:0.75rem;font-weight:bold;display:none;margin-left:3px;">0</span></button>
     <button class="btn btn-secondary btn-sm" onclick="abrirHistoricoEnviados()">📚 Enviados</button>
+    <button class="btn btn-secondary btn-sm" onclick="abrirRecuperarFotos()" style="background:#fff3e0;border:1px solid #ff9800;color:#e65100;">🆘 Recuperar de Fotos</button>
     <button class="btn btn-secondary btn-sm" onclick="abrirRelatorioExistente()">📁 Abrir HTML</button>
-    <button class="btn btn-secondary btn-sm" onclick="abrirDefinicoes()">⚙️ Definições</button>
+    <button class="btn btn-secondary btn-sm" id="btnDefinicoes" onclick="abrirDefinicoes()">⚙️ Definições</button>
     <button class="btn btn-secondary btn-sm" onclick="abrirAjuda()">❓ Ajuda</button>
     <button class="btn btn-sm" id="btnInstalarPWA" style="background:linear-gradient(135deg,#28a745,#1e7e34);color:#fff;display:none;">📲 Instalar</button>
   </div>
 
-  <!-- Cronómetro em tempo real (visível quando embalamento iniciado) -->
-  <div id="liveTimerBar" style="display:none;background:linear-gradient(135deg,#0d47a1,#1976d2);color:white;padding:10px 16px;text-align:center;font-weight:600;font-size:0.95rem;border-radius:0 0 8px 8px;margin-bottom:12px;box-shadow:0 2px 8px rgba(13,71,161,0.25);display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;">
-    <span><span id="liveTimerLabel">A embalar há</span> <span id="liveTimerValue" style="font-size:1.1rem;font-family:monospace;">00:00:00</span></span>
-    <button id="btnPausarRetomar" onclick="toggleCronometro()" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:4px 12px;border-radius:6px;font-weight:600;cursor:pointer;font-size:0.85rem;">⏸️ Pausar</button>
+  <!-- Cronómetro em tempo real (visível quando embalamento iniciado) - apenas informativo, sem botões -->
+  <div id="liveTimerBar" style="display:none;background:linear-gradient(135deg,#0d47a1,#1976d2);color:white;padding:10px 16px;text-align:center;font-weight:600;font-size:0.95rem;border-radius:0 0 8px 8px;margin-bottom:12px;box-shadow:0 2px 8px rgba(13,71,161,0.25);">
+    <span id="liveTimerLabel">A embalar há</span> <span id="liveTimerValue" style="font-size:1.1rem;font-family:monospace;">00:00:00</span>
   </div>
 
   <!-- ===== PASSO 1: IDENTIFICAÇÃO ===== -->
@@ -1119,6 +1119,7 @@
 <div class="action-bar wizard-actions">
   <button class="btn btn-secondary" id="btnVoltar" onclick="prevStep()">← Voltar</button>
   <span class="step-indicator" id="stepIndicator">Passo 1 de 9</span>
+  <button class="btn" id="btnPausarRetomar" onclick="pedirConfirmacaoPausa()" style="display:none;background:#ff9800;color:white;border:none;">⏸️ Pausar</button>
   <button class="btn btn-primary" id="btnAvancar" onclick="nextStep()">Avançar →</button>
   <button class="btn btn-success" id="btnEnviar" onclick="enviarRelatorio()" style="display:none;">📤 Enviar Relatório</button>
 </div>
@@ -1176,9 +1177,54 @@ const CONFIG = {
   urlConfigPowerAutomate: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/464482ea19714e50b858771991c0539d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=H29XBCpPy1dyMk7Gyj6LAWy8RKI8Q4mpUFdI5qanNKU',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.5.5'
+  versao: '1.5.8'
 };
 // ============================================
+
+// ============================================
+// MODO ADMIN vs MODO OPERADOR
+// ============================================
+// Detecção automática:
+//  - Touch device (telemóvel/tablet) → sempre Operador (mesmo com ?admin=1)
+//  - Desktop + ?admin=1 → Admin
+//  - Desktop sem param → Operador (default)
+//
+// No modo Operador, ficam escondidos:
+//  - Botão "⚙️ Definições" (gestão de listas)
+//  - Banner "Modo Revisão" + botão "📧 Reencaminhar à Aernnova"
+//    (Sónia vai reencaminhar à mão no portatil)
+function isTouchDevice() {
+  return ('ontouchstart' in window) ||
+         (navigator.maxTouchPoints > 0) ||
+         (navigator.msMaxTouchPoints > 0) ||
+         /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
+function isModoAdmin() {
+  // Touch device nunca é admin
+  if (isTouchDevice()) return false;
+  // Desktop só é admin com ?admin=1 (ou admin)
+  const params = new URLSearchParams(window.location.search);
+  return params.get('admin') === '1' || params.has('admin');
+}
+
+// Aplicar visibilidade conforme modo (chamado no init)
+function aplicarModoVisibilidade() {
+  const admin = isModoAdmin();
+  // Selectores a esconder em modo Operador
+  const adminOnlySelectors = [
+    '#btnDefinicoes'
+    // (Modo Revisão é tratado separadamente em criarBannerModoEdicao)
+  ];
+  adminOnlySelectors.forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => {
+      el.style.display = admin ? '' : 'none';
+    });
+  });
+  // Marcar body para CSS opcional
+  document.body.dataset.modo = admin ? 'admin' : 'operador';
+  console.log('[Modo] App em modo:', admin ? 'ADMIN' : 'OPERADOR', '(touch:', isTouchDevice(), ')');
+}
 
 // Lista de operadores padrão (carregada apenas se não houver lista guardada nas Definições)
 // Fonte: ficheiro Configuracoes_App_Producao.xlsx (folha ConfigColaboradores, Ativo=True)
@@ -1646,7 +1692,8 @@ const state = {
   checklist: {},
   signatures: {},
   cronometro: { sessoes: [], emPausa: false },
-  currentStep: 1
+  currentStep: 1,
+  _modoEnvio: 'final'  // 'parcial' quando enviado por pausa; 'final' (default) para envio normal
 };
 
 const TOTAL_STEPS = 8;
@@ -1732,6 +1779,9 @@ document.addEventListener('DOMContentLoaded', () => {
   monitorizarRede();
   configurarBotaoInstalar();
   configurarBuscarVideos();
+
+  // Aplicar modo Admin vs Operador (esconde Definições no telemóvel)
+  aplicarModoVisibilidade();
 
   // Auto-save robusto (IndexedDB) + tentativa de recuperação
   configurarAutoSave();
@@ -1856,6 +1906,9 @@ function showStep(n) {
     btnEnviar.style.display = 'none';
   }
   indicator.textContent = `Passo ${n} de ${TOTAL_STEPS} — ${STEP_LABELS[n-1]}`;
+
+  // Actualizar visibilidade do botão Pausar/Retomar
+  if (typeof actualizarBotaoPausar === 'function') actualizarBotaoPausar();
 
   // Quando entra no Passo 7 (Assinaturas), mostrar os nomes dos operadores e inicializar canvas
   if (n === 7) {
@@ -2140,6 +2193,7 @@ function iniciarNovaSessao() {
   state.cronometro.sessoes.push({ inicio: new Date().toISOString(), fim: null });
   state.cronometro.emPausa = false;
   if (typeof autoSave === 'function') autoSave();
+  if (typeof actualizarBotaoPausar === 'function') actualizarBotaoPausar();
 }
 
 // Fechar sessão actual (marcar fim)
@@ -2225,30 +2279,59 @@ function pararLiveTimer() {
   if (bar) bar.style.display = 'none';
 }
 
-// Botão Pausar/Retomar
-function toggleCronometro() {
+// Botão Pausar/Retomar — mostra modal de confirmação se for pausar; retoma directo
+function pedirConfirmacaoPausa() {
   normalizarCronometro();
-  // Guarda: não fazer nada se ainda não há sessões iniciadas
   if (state.cronometro.sessoes.length === 0) {
     mostrarToast('⚠️ Cronómetro ainda não iniciado. Avance do Passo 1 primeiro.');
     return;
   }
+
+  // Se está em pausa → retomar directamente (sem confirmação)
   if (state.cronometro.emPausa) {
-    // Retomar: nova sessão
     iniciarNovaSessao();
     mostrarToast('▶️ Cronómetro retomado');
     iniciarLiveTimer();
-  } else {
-    // Pausar: fechar sessão actual
-    fecharSessaoActual();
-    state.cronometro.emPausa = true;
-    if (typeof autoSave === 'function') autoSave();
-    iniciarLiveTimer();  // re-render barra em modo pausa
+    actualizarBotaoPausar();
+    return;
+  }
 
-    // ENVIO OBRIGATÓRIO de relatório parcial à Sónia
-    setTimeout(() => {
-      enviarRelatorioParcial();
-    }, 200);
+  // Está a correr → pedir confirmação para pausar
+  if (!confirm('⏸️ Pausar embalamento?\n\nO cronómetro vai parar. Pode retomar quando quiser.\n\nO tempo da pausa NÃO conta para o relatório final.')) {
+    return;
+  }
+
+  // Confirmou — pausar (silenciosamente, sem enviar relatório parcial)
+  fecharSessaoActual();
+  state.cronometro.emPausa = true;
+  if (typeof autoSave === 'function') autoSave();
+  iniciarLiveTimer();
+  actualizarBotaoPausar();
+  mostrarToast('⏸️ Embalamento pausado');
+}
+
+// Função antiga "toggleCronometro" mantida para compatibilidade (não é chamada actualmente)
+function toggleCronometro() {
+  pedirConfirmacaoPausa();
+}
+
+// Mostrar/esconder e mudar texto do botão Pausar/Retomar consoante estado do cronómetro
+function actualizarBotaoPausar() {
+  const btn = document.getElementById('btnPausarRetomar');
+  if (!btn) return;
+  normalizarCronometro();
+  const temSessoes = state.cronometro.sessoes.length > 0;
+  if (!temSessoes) {
+    btn.style.display = 'none';
+    return;
+  }
+  btn.style.display = '';
+  if (state.cronometro.emPausa) {
+    btn.innerHTML = '▶️ Retomar';
+    btn.style.background = '#28a745';
+  } else {
+    btn.innerHTML = '⏸️ Pausar';
+    btn.style.background = '#ff9800';
   }
 }
 
@@ -2267,7 +2350,9 @@ async function enviarRelatorioParcial() {
   }
 
   try {
-    // Gerar HTML do relatório (já mostra estado "parcial" porque a última sessão tem fim e há pausa)
+    // Marcar explicitamente o modo de envio
+    state._modoEnvio = 'parcial';
+    // Gerar HTML do relatório (mostra banner PARCIAL porque _modoEnvio = 'parcial')
     const html = gerarRelatorioHTML();
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
 
@@ -2342,6 +2427,9 @@ Embaresa PT — Embalamento
   } catch (err) {
     console.error('Erro ao gerar relatório parcial:', err);
     mostrarToast('⏸️ Pausa registada. Erro ao gerar relatório parcial.');
+  } finally {
+    // Limpar flag — próximo envio (a não ser que seja outra pausa) será 'final'
+    state._modoEnvio = 'final';
   }
 }
 
@@ -2434,8 +2522,28 @@ async function onPhotoSelected(event, stepKey) {
   const files = Array.from(event.target.files || []);
   if (!files.length) return;
 
-  const quality = 0.7;
-  const maxSize = 1600;
+  // Compressão adaptativa — mais fotos = compressão mais agressiva para evitar crashes
+  const numFotosActual = state.fotos.length;
+  const totalAposEsta = numFotosActual + files.length;
+  let quality, maxSize;
+  if (totalAposEsta > 25) {
+    quality = 0.55;
+    maxSize = 1200;
+  } else if (totalAposEsta > 15) {
+    quality = 0.65;
+    maxSize = 1400;
+  } else {
+    quality = 0.7;
+    maxSize = 1600;
+  }
+
+  // Aviso se está a chegar perto do limite
+  if (totalAposEsta > 25 && numFotosActual <= 25) {
+    if (!confirm(`⚠️ Vai ter ${totalAposEsta} fotos no relatório.\n\nMais de 25 fotos podem fazer a app travar ao gerar o relatório final.\n\nRecomenda-se manter abaixo de 25. Continuar mesmo assim?`)) {
+      if (event.target) event.target.value = '';
+      return;
+    }
+  }
 
   for (const file of files) {
     try {
@@ -3116,14 +3224,14 @@ function gerarRelatorioHTML() {
 </style>
 </head>
 <body>
-  ${state.cronometro && state.cronometro.emPausa ? `
+  ${state._modoEnvio === 'parcial' ? `
   <div style="background:linear-gradient(135deg,#fff3e0,#ffe0b2);border:2px solid #ff9800;border-radius:8px;padding:16px;margin-bottom:20px;text-align:center;">
     <div style="font-size:1.1rem;font-weight:700;color:#e65100;">⏸️ RELATÓRIO PARCIAL — Embalamento ainda em curso</div>
     <div style="font-size:0.88rem;color:#bf360c;margin-top:6px;">
       O embalamento foi pausado e será retomado posteriormente. Este é um registo intermédio do progresso.
     </div>
   </div>` : ''}
-  <h1>📦 Relatório de Embalamento${state.cronometro && state.cronometro.emPausa ? ' <span style="color:#e65100;font-size:0.7em;">[PARCIAL]</span>' : ''}</h1>
+  <h1>📦 Relatório de Embalamento${state._modoEnvio === 'parcial' ? ' <span style="color:#e65100;font-size:0.7em;">[PARCIAL]</span>' : ''}</h1>
   <div class="rep-header">Embaresa PT — Controlo de Qualidade • ${d.dataFormatada}</div>
 
   <h2>1. Identificação</h2>
@@ -3427,8 +3535,32 @@ async function enviarRelatorio() {
   if (temSessaoEmCurso()) {
     fecharSessaoActual();
   }
+  // ⭐ IMPORTANTE: este é um envio FINAL — limpar estado de pausa.
+  // Sem isto, se o operador foi do "Pausar" directamente para o Passo 8 e enviou,
+  // o relatório sairia marcado como PARCIAL (bug v1.5.5 — corrigido aqui).
+  state.cronometro.emPausa = false;
+  // Marcar explicitamente o modo de envio para a geração do HTML
+  state._modoEnvio = 'final';
+
   // Parar timer live
   if (typeof pararLiveTimer === 'function') pararLiveTimer();
+
+  // ⭐ SALVAGUARDA CRÍTICA — auto-save IMEDIATO antes de gerar HTML pesado
+  // Se houver crash na geração (memória esgotada com muitas fotos),
+  // o rascunho fica intacto e os operadores podem retomar.
+  try { await autoSave(true); } catch (e) { console.warn('[Auto-save pré-envio] falhou:', e); }
+
+  // Se tem muitas fotos, avisar e dar opção de cancelar
+  const numFotos = state.fotos.length;
+  if (numFotos > 25) {
+    if (!confirm(`⚠️ Vai gerar relatório com ${numFotos} fotos.\n\nIsto pode demorar e há risco de a app travar com tantas fotos.\n\nO rascunho já foi guardado — se algo correr mal, pode retomar.\n\nContinuar?`)) {
+      mostrarToast('Envio cancelado. Rascunho guardado.');
+      return;
+    }
+    mostrarToast('🔄 A gerar relatório... pode demorar.');
+    // Yield ao browser para mostrar o toast
+    await new Promise(r => setTimeout(r, 100));
+  }
 
   const d = getDados();
   const html = gerarRelatorioHTML();
@@ -3846,6 +3978,11 @@ async function gravarEnviado(html, dados) {
     const db = await abrirIndexedDB();
     const ts = Date.now();
     const key = ts + '_' + (dados.numSerie || 'sem').replace(/\s+/g, '_');
+    // Calcular nomes prováveis das fotos em Downloads para esta série/plano
+    // (gerados pela função guardarFotoLocalmente — formato: EmbaresaQC_<serie>_<plano>_<step>_<ts>.jpg)
+    const snFile = dados.numSerie && dados.numSerie !== '—' ? dados.numSerie.replace(/\s+/g, '-') : 'sem-serie';
+    const planoFile = dados.planoNum || 'sem-plano';
+    const filtroFotos = `EmbaresaQC_${snFile}_${planoFile}_*.jpg`;
     const registo = {
       key,
       timestamp: ts,
@@ -3855,7 +3992,9 @@ async function gravarEnviado(html, dados) {
       planoNome: dados.planoNome,
       numEncomenda: dados.numEncomenda,
       operadorEmbaresa: dados.operadorEmbaresa,
-      html: html  // HTML completo do relatório
+      html: html,  // HTML completo do relatório
+      filtroFotosDownloads: filtroFotos,  // Filtro para apagar no admin
+      numFotos: (state.fotos || []).length
     };
     return new Promise((resolve) => {
       const tx = db.transaction(DB_STORE_ENVIADOS, 'readwrite');
@@ -4182,6 +4321,8 @@ function carregarRascunho() {
 // edite campos como Nº Encomenda, e gere uma versão actualizada.
 
 function abrirRelatorioExistente() {
+  // No modo Operador (telemóvel), abrir HTML carrega o relatório mas NÃO entra em Modo Revisão
+  // (Modo Revisão é para administração reencaminhar à Aernnova — só faz sentido no portatil)
   // Criar input file dinâmico
   const input = document.createElement('input');
   input.type = 'file';
@@ -4207,8 +4348,10 @@ function abrirRelatorioExistente() {
         carregarDadosRelatorio(dados);
         // Limpar rascunho IDB para evitar conflito na próxima abertura
         if (typeof apagarRascunhoIDB === 'function') apagarRascunhoIDB();
-        // Mostrar indicador de modo edição
-        mostrarBannerModoEdicao(file.name);
+        // Mostrar indicador de modo edição APENAS em modo admin
+        if (isModoAdmin()) {
+          mostrarBannerModoEdicao(file.name);
+        }
       } catch (err) {
         console.error('Erro ao abrir relatório:', err);
         alert('❌ Erro ao ler o ficheiro:\n\n' + err.message);
@@ -4338,12 +4481,35 @@ async function novoRelatorio() {
     const serie = d.numSerie !== '—' ? d.numSerie : '(sem série)';
     const plano = d.planoNum || '(sem plano)';
     const numFotos = state.fotos.length;
-    const msg = '⚠️ Há trabalho em curso:\n\n' +
+    const passoActual = state.currentStep || 1;
+    const labelPasso = STEP_LABELS[passoActual - 1] || `Passo ${passoActual}`;
+    const numAssinaturas = (state.signatures.embaresa ? 1 : 0) + (state.signatures.embaresa2 ? 1 : 0) + (state.signatures.cliente ? 1 : 0);
+
+    // Detectar se está perto do fim (Passo 7 ou 8 — já com muito trabalho feito)
+    const quaseTerminado = passoActual >= 7;
+    const aviso = quaseTerminado
+      ? '\n\n⚠️ ATENÇÃO: este relatório está QUASE TERMINADO. Tem a certeza que quer iniciar outro?\n'
+      : '';
+
+    const msg = `${aviso}⚠️ Há trabalho em curso:\n\n` +
                 `• ${plano} — ${serie}\n` +
-                `• ${numFotos} foto${numFotos !== 1 ? 's' : ''}\n\n` +
-                'Este trabalho será GUARDADO automaticamente (pode aceder depois em "📂 Rascunhos").\n\n' +
+                `• Passo ${passoActual}: ${labelPasso}\n` +
+                `• ${numFotos} foto${numFotos !== 1 ? 's' : ''}\n` +
+                (numAssinaturas > 0 ? `• ${numAssinaturas}/3 assinaturas feitas\n` : '') +
+                '\nEste trabalho será GUARDADO automaticamente (pode aceder depois em "📂 Rascunhos").\n\n' +
                 'Deseja começar um novo relatório agora?';
     if (!confirm(msg)) return;
+
+    // Pedir SEGUNDA confirmação se está perto do fim — mais frágil
+    if (quaseTerminado) {
+      if (!confirm(`⚠️ ÚLTIMA CONFIRMAÇÃO:\n\nO relatório "${serie}" está no Passo ${passoActual} de 8.\n\nEnviar este antes de iniciar outro? (Cancelar = iniciar novo na mesma)`)) {
+        // Operador cancela a segunda confirmação → quer iniciar novo
+      } else {
+        // Operador confirma → quer enviar este antes
+        mostrarToast('OK, vá ao Passo 8 e clique "📤 Enviar Relatório" primeiro.');
+        return;
+      }
+    }
 
     // Forçar gravação imediata do rascunho actual antes de limpar
     await autoSave(true);
@@ -4382,6 +4548,7 @@ async function limparEstadoParaNovo() {
   state.signatures = {};
   state.cronometro = { sessoes: [], emPausa: false };
   state.currentStep = 1;
+  state._modoEnvio = 'final';
   // Parar timer live
   if (typeof pararLiveTimer === 'function') pararLiveTimer();
   // Limpar UI das fotos por passo
@@ -4576,6 +4743,205 @@ async function aplicarRascunho(r) {
 }
 
 // ============================================
+// 🆘 RECUPERAÇÃO A PARTIR DE FOTOS (rede de segurança final)
+// ============================================
+// Se houve crash da app e o rascunho perdeu-se, mas as fotos ainda estão na
+// galeria ou em Downloads (chamadas "EmbaresaQC_EM2283_..."), permite ao
+// operador seleccionar essas fotos e reconstrói automaticamente o relatório:
+// - extrai série, plano e passo do nome do ficheiro
+// - cria rascunho novo com fotos nos passos correctos
+// Operador só precisa de preencher checklist, dimensões, assinaturas.
+
+function abrirRecuperarFotos() {
+  let modal = document.getElementById('modalRecuperarFotos');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'modalRecuperarFotos';
+  modal.className = 'modal-overlay active';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:600px;">
+      <h3 style="margin-top:0;color:#e65100;">🆘 Recuperar relatório a partir de fotos</h3>
+      <p style="font-size:0.9rem;color:#333;line-height:1.5;">
+        Use esta opção quando o trabalho foi perdido (app travou, rascunho desapareceu) mas as fotos ainda estão na galeria ou na pasta Downloads.
+      </p>
+      <div style="background:#e3f2fd;border-left:4px solid #2196f3;padding:12px;margin:14px 0;font-size:0.85rem;color:#0d47a1;">
+        <strong>Como funciona:</strong><br>
+        1. Carregue todas as fotos do embalamento (galeria ou Downloads)<br>
+        2. A app extrai automaticamente plano, série e passo do nome do ficheiro<br>
+        3. Cria rascunho novo já com fotos no sítio certo<br>
+        4. Só precisa de completar checklist e assinar
+      </div>
+      <div style="background:#fff3e0;border-left:4px solid #ff9800;padding:12px;margin:14px 0;font-size:0.85rem;color:#bf360c;">
+        <strong>Requisito:</strong> As fotos têm de ter o nome no formato <code>EmbaresaQC_EMxxxx_plano_passo_data.jpg</code> (formato que a app gera quando tira fotos). Fotos com outros nomes não podem ser recuperadas automaticamente.
+      </div>
+
+      <div style="margin:20px 0;">
+        <label for="inputFotosRecuperar" style="display:block;padding:20px;border:2px dashed #ff9800;border-radius:8px;text-align:center;cursor:pointer;background:#fff8e1;">
+          <div style="font-size:2rem;margin-bottom:8px;">📥</div>
+          <div style="font-weight:600;color:#e65100;">Clique para seleccionar fotos</div>
+          <div style="font-size:0.85rem;color:#666;margin-top:4px;">Pode seleccionar várias ao mesmo tempo</div>
+        </label>
+        <input type="file" id="inputFotosRecuperar" multiple accept="image/jpeg,image/jpg,image/png" style="display:none;" onchange="processarFotosRecuperacao(event)" />
+      </div>
+
+      <div id="previewRecuperacao"></div>
+
+      <div style="text-align:right;margin-top:10px;">
+        <button class="btn btn-secondary" onclick="document.getElementById('modalRecuperarFotos').remove()">Cancelar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+// Extrai metadados do nome do ficheiro
+// Formato gerado pela app: EmbaresaQC_<serie>_<plano>_<stepKey>_<timestamp>.jpg
+// Ex: EmbaresaQC_EM-2283_230429R1_caixaVazia_2026-06-19T15-30-45-123Z.jpg
+function extrairMetadadosFoto(fileName) {
+  const match = fileName.match(/^EmbaresaQC_([^_]+)_([^_]+)_([^_]+)_(.+)\.(jpg|jpeg|png)$/i);
+  if (!match) return null;
+  return {
+    serie: match[1].replace(/-/g, ' ').trim(),  // EM-2283 → "EM 2283"
+    plano: match[2],
+    stepKey: match[3],
+    timestamp: match[4],
+    fileName
+  };
+}
+
+async function processarFotosRecuperacao(event) {
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
+
+  const preview = document.getElementById('previewRecuperacao');
+  preview.innerHTML = '<p style="color:#666;">A processar...</p>';
+
+  // Extrair metadados de cada ficheiro
+  const reconhecidos = [];
+  const naoReconhecidos = [];
+  for (const f of files) {
+    const meta = extrairMetadadosFoto(f.name);
+    if (meta) {
+      reconhecidos.push({ meta, file: f });
+    } else {
+      naoReconhecidos.push(f.name);
+    }
+  }
+
+  if (reconhecidos.length === 0) {
+    preview.innerHTML = `
+      <div style="background:#ffebee;border:1px solid #f44336;padding:14px;border-radius:6px;color:#c62828;">
+        <strong>❌ Nenhuma foto válida reconhecida.</strong><br>
+        <small>As fotos têm de ter o formato <code>EmbaresaQC_EMxxxx_plano_passo_data.jpg</code>. Foram seleccionadas ${files.length} foto(s) mas nenhuma tem esse formato.</small>
+      </div>`;
+    return;
+  }
+
+  // Agrupar por série+plano (cada combinação é um relatório distinto)
+  const grupos = {};
+  for (const r of reconhecidos) {
+    const k = r.meta.serie + '|' + r.meta.plano;
+    if (!grupos[k]) grupos[k] = { serie: r.meta.serie, plano: r.meta.plano, fotos: [] };
+    grupos[k].fotos.push(r);
+  }
+
+  const gruposArr = Object.values(grupos);
+  const gruposHTML = gruposArr.map((g, idx) => {
+    const passosCount = {};
+    g.fotos.forEach(f => {
+      passosCount[f.meta.stepKey] = (passosCount[f.meta.stepKey] || 0) + 1;
+    });
+    const passosDetalhe = Object.entries(passosCount).map(([k, n]) => `${k} (${n})`).join(', ');
+    const planoNome = PLANOS_DB[g.plano] ? PLANOS_DB[g.plano].nome.substring(0, 40) : '';
+    return `
+      <div style="border:2px solid #ff9800;border-radius:8px;padding:12px;margin-bottom:10px;background:#fff8e1;">
+        <div style="font-weight:600;color:#e65100;">${escapeHtml(g.serie)} • ${escapeHtml(g.plano)}</div>
+        <div style="font-size:0.85rem;color:#5d4037;margin:4px 0;">${escapeHtml(planoNome)}</div>
+        <div style="font-size:0.82rem;color:#666;">📷 ${g.fotos.length} foto${g.fotos.length !== 1 ? 's' : ''}: ${escapeHtml(passosDetalhe)}</div>
+        <div style="margin-top:10px;">
+          <button class="btn btn-primary btn-sm" onclick="criarRascunhoDeRecuperacao(${idx})" style="background:#ff9800;border:none;">📦 Recuperar este relatório</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  const naoReconHTML = naoReconhecidos.length > 0
+    ? `<details style="margin-top:14px;font-size:0.82rem;color:#666;"><summary>${naoReconhecidos.length} foto(s) não reconhecida(s)</summary><ul>${naoReconhecidos.slice(0,5).map(n => `<li>${escapeHtml(n)}</li>`).join('')}${naoReconhecidos.length > 5 ? `<li>… +${naoReconhecidos.length - 5} mais</li>` : ''}</ul></details>`
+    : '';
+
+  preview.innerHTML = `
+    <div style="background:#e8f5e9;border:1px solid #4caf50;padding:12px;border-radius:6px;margin-bottom:14px;color:#1b5e20;">
+      <strong>✓ ${reconhecidos.length} foto${reconhecidos.length !== 1 ? 's' : ''} reconhecida${reconhecidos.length !== 1 ? 's' : ''}.</strong> Agrupadas em ${gruposArr.length} relatório${gruposArr.length !== 1 ? 's' : ''}:
+    </div>
+    ${gruposHTML}
+    ${naoReconHTML}`;
+
+  // Guardar grupos para uso posterior
+  window._gruposRecuperacao = gruposArr;
+}
+
+async function criarRascunhoDeRecuperacao(idx) {
+  const grupos = window._gruposRecuperacao;
+  if (!grupos || !grupos[idx]) return;
+  const g = grupos[idx];
+
+  if (!confirm(`Recuperar relatório "${g.serie}" com ${g.fotos.length} fotos?\n\nO trabalho actual (se houver) será GUARDADO em rascunho separado.`)) return;
+
+  // Guardar trabalho actual em rascunho
+  const d = getDados();
+  if (d.planoNum || (d.numSerie && d.numSerie !== '—') || state.fotos.length > 0) {
+    await autoSave(true);
+  }
+
+  // Limpar estado para o relatório recuperado
+  await limparEstadoParaNovo();
+
+  // Aplicar dados básicos
+  document.getElementById('planoNum').value = g.plano;
+  document.getElementById('numSerie').value = g.serie.replace(/^EM\s*/i, '');
+  // Não há cliente no nome do ficheiro — operador escolhe
+  onPlanoChange();
+
+  // Carregar fotos e converter para dataURL
+  let nextId = nextPhotoId || 0;
+  for (const f of g.fotos) {
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(f.file);
+      });
+      state.fotos.push({
+        id: nextId++,
+        dataUrl,
+        label: '(recuperada)',
+        step: f.meta.stepKey
+      });
+    } catch (e) {
+      console.warn('Falha a carregar foto:', f.file.name, e);
+    }
+  }
+  nextPhotoId = nextId;
+
+  // Mostrar mensagem nas observações
+  const obsEl = document.getElementById('observacoes');
+  if (obsEl) {
+    obsEl.value = `[RELATÓRIO RECUPERADO] As fotos foram recuperadas da galeria após perda do rascunho original. Verificar dados antes de enviar. Data da recuperação: ${new Date().toLocaleString('pt-PT')}.`;
+  }
+
+  // Guardar imediatamente
+  await autoSave(true);
+
+  // Re-render
+  renderTodasFotos();
+  [2,3,4,5].forEach(p => atualizarContadorPasso(p));
+  showStep(1);
+
+  document.getElementById('modalRecuperarFotos').remove();
+  mostrarToast(`✅ Relatório recuperado: ${g.fotos.length} fotos carregadas. Complete os dados em falta.`);
+}
+
+
+// ============================================
 // HISTÓRICO DE ENVIADOS (modal)
 // ============================================
 async function abrirHistoricoEnviados() {
@@ -4601,6 +4967,9 @@ async function abrirHistoricoEnviados() {
 
   const itensHTML = lista.map(r => {
     const dataStr = new Date(r.dataEnvio).toLocaleString('pt-PT');
+    const adminCleanupBtn = isModoAdmin() && r.filtroFotosDownloads
+      ? `<button class="btn btn-secondary btn-sm" style="background:#ff9800;color:white;border:none;" onclick="mostrarLimpezaFotos('${r.key}')">🗑️ Limpar fotos (${r.numFotos || '?'})</button>`
+      : '';
     return `
       <div style="border:1px solid #ddd;border-radius:8px;padding:12px;margin-bottom:10px;background:white;">
         <div style="font-weight:600;color:#1a1a2e;">${escapeHtml(r.numSerie || '—')} • ${escapeHtml(r.planoNum || '—')}</div>
@@ -4608,20 +4977,85 @@ async function abrirHistoricoEnviados() {
         <div style="font-size:0.8rem;color:#888;margin-top:4px;">📅 Enviado em ${escapeHtml(dataStr)} por ${escapeHtml(r.operadorEmbaresa || '—')}</div>
         <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;">
           <button class="btn btn-primary btn-sm" onclick="reabrirRelatorioEnviado('${r.key}')">📄 Reabrir / Reenviar</button>
+          ${adminCleanupBtn}
         </div>
       </div>`;
   }).join('');
+
+  const adminAviso = isModoAdmin()
+    ? '<div style="background:#fff3e0;border:1px solid #ff9800;padding:10px;border-radius:6px;margin-bottom:14px;font-size:0.85rem;color:#bf360c;">💡 <strong>Modo Admin:</strong> tem botão "🗑️ Limpar fotos" para apagar fotos antigas em Downloads do telemóvel (precisa de aceder ao telemóvel).</div>'
+    : '';
 
   modal.innerHTML = `
     <div class="modal-card" style="max-width:600px;max-height:85vh;overflow:auto;">
       <h3 style="margin-top:0;color:#1a1a2e;">📚 Histórico de relatórios enviados (${lista.length})</h3>
       <p style="font-size:0.85rem;color:#666;">Últimos ${MAX_HISTORICO} relatórios dos últimos ${DIAS_HISTORICO} dias. Pode reabrir para reenviar.</p>
+      ${adminAviso}
       <div>${itensHTML}</div>
       <div style="text-align:right;margin-top:10px;">
         <button class="btn btn-secondary" onclick="document.getElementById('modalHistorico').remove()">Fechar</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
+}
+
+// Mostrar modal de instruções para apagar fotos manualmente (admin)
+async function mostrarLimpezaFotos(key) {
+  try {
+    const db = await abrirIndexedDB();
+    const r = await new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE_ENVIADOS, 'readonly');
+      const req = tx.objectStore(DB_STORE_ENVIADOS).get(key);
+      req.onsuccess = () => resolve(req.result);
+    });
+    if (!r) { alert('Registo não encontrado.'); return; }
+
+    let modal = document.getElementById('modalLimpezaFotos');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'modalLimpezaFotos';
+    modal.className = 'modal-overlay active';
+    modal.innerHTML = `
+      <div class="modal-card" style="max-width:600px;">
+        <h3 style="margin-top:0;color:#e65100;">🗑️ Limpar fotos da pasta Downloads</h3>
+
+        <div style="background:#fff3e0;border:1px solid #ff9800;border-radius:6px;padding:12px;margin-bottom:14px;font-size:0.9rem;color:#bf360c;">
+          <strong>Relatório:</strong> ${escapeHtml(r.numSerie || '—')} • ${escapeHtml(r.planoNum || '—')}<br>
+          <strong>Enviado:</strong> ${new Date(r.dataEnvio).toLocaleString('pt-PT')}<br>
+          <strong>Fotos a apagar:</strong> ~${r.numFotos || '?'} ficheiros
+        </div>
+
+        <p style="font-size:0.9rem;color:#333;line-height:1.5;">
+          A app não pode apagar ficheiros do telemóvel directamente (limitação de segurança do Android).
+          Siga estes passos manualmente <strong>no telemóvel partilhado</strong>:
+        </p>
+
+        <ol style="font-size:0.9rem;line-height:1.7;color:#333;">
+          <li>Abrir <strong>"Os Meus Ficheiros"</strong> (Samsung) ou <strong>"Files by Google"</strong></li>
+          <li>Ir a pasta <strong>Downloads</strong> (ou Transferências)</li>
+          <li>Na barra de pesquisa, escrever o filtro abaixo:</li>
+        </ol>
+
+        <div style="background:#f5f5f5;border:1px solid #ddd;border-radius:6px;padding:12px;font-family:monospace;font-size:0.95rem;margin:10px 0;text-align:center;font-weight:600;color:#1a1a2e;">
+          ${escapeHtml(r.filtroFotosDownloads || '')}
+        </div>
+        <button class="btn btn-sm" onclick="navigator.clipboard.writeText('${escapeAttr(r.filtroFotosDownloads || '')}').then(()=>mostrarToast('📋 Filtro copiado'))" style="background:#0d47a1;color:white;border:none;width:100%;margin-bottom:14px;">📋 Copiar filtro</button>
+
+        <ol start="4" style="font-size:0.9rem;line-height:1.7;color:#333;">
+          <li>Seleccionar todos os ficheiros que aparecem</li>
+          <li>Apagar (lixeira)</li>
+          <li>Voltar aqui e fechar este modal</li>
+        </ol>
+
+        <div style="text-align:right;margin-top:14px;">
+          <button class="btn btn-primary" onclick="document.getElementById('modalLimpezaFotos').remove()">Já apaguei, fechar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  } catch (e) {
+    console.error(e);
+    alert('Erro: ' + e.message);
+  }
 }
 
 async function reabrirRelatorioEnviado(key) {
