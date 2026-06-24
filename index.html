@@ -1177,7 +1177,7 @@ const CONFIG = {
   urlConfigPowerAutomate: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/464482ea19714e50b858771991c0539d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=H29XBCpPy1dyMk7Gyj6LAWy8RKI8Q4mpUFdI5qanNKU',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.5.8'
+  versao: '1.5.9'
 };
 // ============================================
 
@@ -3578,7 +3578,7 @@ async function enviarRelatorio() {
   // MODO REVISÃO (Sónia no portatil → reencaminhar Aernnova)
   // ============================================
   if (isModoRevisao) {
-    return enviarRelatorioModoRevisao(blob, file, fileName, d);
+    return await enviarRelatorioModoRevisao(blob, file, fileName, d);
   }
 
   // ============================================
@@ -3621,9 +3621,19 @@ Embaresa PT — Embalamento
         files: [file]
       });
       mostrarSucesso('Partilha aberta. Escolha "Gmail" e clique em Enviar.');
+      const numFotosEnviadas = state.fotos.length;
       await gravarEnviado(html, d);
-      apagarRascunhoIDB();
-      atualizarContadorRascunhos();
+      // 🐛 BUG FIX v1.5.9: apagar rascunho com await e key explícita
+      // Antes: apagarRascunhoIDB() — sem await, sem key, podia falhar silenciosamente
+      const keyParaApagar = rascunhoActualKey;
+      if (keyParaApagar) {
+        await apagarRascunhoIDB(keyParaApagar);
+      }
+      await atualizarContadorRascunhos();
+      // Limpar fotos do estado em memória — já não precisamos
+      state.fotos = [];
+      // Mostrar instruções para apagar fotos em Downloads
+      setTimeout(() => mostrarModalLimpezaPosEnvio(d, numFotosEnviadas), 500);
       return;
     } catch (err) {
       console.log('[Share] Cancelado ou erro:', err);
@@ -3643,19 +3653,27 @@ Embaresa PT — Embalamento
   const destEmail = d.emailCliente || getConfigEmailDestino();
   const mailto = construirMailto(destEmail, subject, body + '\n[Anexar o ficheiro descarregado: ' + fileName + ']');
 
+  // 🐛 BUG FIX v1.5.9: capturar chave ANTES de iniciar setTimeout (estado pode mudar)
+  const keyParaApagarFallback = rascunhoActualKey;
+  const numFotosEnviadasFallback = state.fotos.length;
+
   setTimeout(async () => {
     window.location.href = mailto;
     mostrarSucesso(`Ficheiro descarregado: ${fileName}\n\nNo email que abrir, anexe o ficheiro descarregado e envie.`);
     await gravarEnviado(html, d);
-    apagarRascunhoIDB();
-    atualizarContadorRascunhos();
+    if (keyParaApagarFallback) {
+      await apagarRascunhoIDB(keyParaApagarFallback);
+    }
+    await atualizarContadorRascunhos();
+    state.fotos = [];
+    mostrarModalLimpezaPosEnvio(d, numFotosEnviadasFallback);
   }, 500);
 }
 
 // ============================================
 // ENVIO MODO REVISÃO (Sónia → Aernnova)
 // ============================================
-function enviarRelatorioModoRevisao(blob, file, fileName, d) {
+async function enviarRelatorioModoRevisao(blob, file, fileName, d) {
   // 1. Descarregar o ficheiro automaticamente
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -3667,9 +3685,13 @@ function enviarRelatorioModoRevisao(blob, file, fileName, d) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 
   // 2. Gravar no histórico (precisamos ler o blob como texto)
-  blob.text().then(htmlText => {
-    gravarEnviado(htmlText, d);
-  }).catch(e => console.error('Erro a gravar histórico:', e));
+  // 🐛 BUG FIX v1.5.9: await em vez de fire-and-forget
+  try {
+    const htmlText = await blob.text();
+    await gravarEnviado(htmlText, d);
+  } catch (e) {
+    console.error('Erro a gravar histórico:', e);
+  }
 
   // 3. Mostrar modal com info e botão para abrir email
   mostrarModalEnvioAernnova(fileName, d);
@@ -3780,9 +3802,57 @@ function validarBasico(soAviso) {
 }
 
 function mostrarSucesso(msg) {
-  // Limpar rascunho IndexedDB — relatório enviado com sucesso
-  if (typeof apagarRascunhoIDB === 'function') apagarRascunhoIDB();
+  // 🐛 BUG FIX v1.5.9: NÃO apagar rascunho aqui (já é feito no chamador com await + key)
   alert('✅ ' + msg);
+}
+
+// Mostrar modal a explicar como apagar fotos da pasta Downloads do telemóvel
+// Chamado SEMPRE após envio bem-sucedido (tanto operador como admin podem precisar)
+function mostrarModalLimpezaPosEnvio(d, numFotos) {
+  if (!numFotos || numFotos === 0) return;
+  const snFile = d.numSerie && d.numSerie !== '—' ? d.numSerie.replace(/\s+/g, '-') : 'sem-serie';
+  const planoFile = d.planoNum || 'sem-plano';
+  const filtro = `EmbaresaQC_${snFile}_${planoFile}_`;
+
+  let modal = document.getElementById('modalLimpezaPosEnvio');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'modalLimpezaPosEnvio';
+  modal.className = 'modal-overlay active';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:520px;">
+      <h3 style="margin-top:0;color:#1b5e20;">✅ Relatório enviado!</h3>
+      <div style="background:#e8f5e9;border:1px solid #4caf50;border-radius:6px;padding:12px;margin-bottom:14px;font-size:0.9rem;color:#1b5e20;">
+        <strong>${escapeHtml(d.numSerie || '—')}</strong> • ${escapeHtml(d.planoNum || '—')}<br>
+        ${numFotos} foto${numFotos !== 1 ? 's' : ''} enviada${numFotos !== 1 ? 's' : ''}
+      </div>
+
+      <div style="background:#fff3e0;border:1px solid #ff9800;border-radius:6px;padding:12px;margin-bottom:14px;font-size:0.88rem;color:#bf360c;">
+        <strong>💡 Importante — apagar fotos da pasta Downloads:</strong><br>
+        Vão evitar que o telemóvel encha. Como não posso apagar pelo telemóvel, faça-o à mão.
+      </div>
+
+      <ol style="font-size:0.9rem;line-height:1.6;color:#333;">
+        <li>Abrir <strong>"Os Meus Ficheiros"</strong> ou <strong>"Files"</strong></li>
+        <li>Ir a <strong>Downloads</strong> (ou Transferências)</li>
+        <li>Procurar/filtrar por este nome:</li>
+      </ol>
+
+      <div style="background:#f5f5f5;border:1px solid #ddd;border-radius:6px;padding:10px;font-family:monospace;font-size:0.92rem;margin:8px 0;text-align:center;font-weight:600;">
+        ${escapeHtml(filtro)}
+      </div>
+      <button class="btn btn-sm" onclick="navigator.clipboard.writeText('${escapeAttr(filtro)}').then(()=>mostrarToast('📋 Copiado!'))" style="background:#0d47a1;color:white;border:none;width:100%;padding:8px;border-radius:6px;cursor:pointer;margin-bottom:14px;">📋 Copiar filtro</button>
+
+      <ol start="4" style="font-size:0.9rem;line-height:1.6;color:#333;">
+        <li>Seleccionar tudo o que aparecer</li>
+        <li>Apagar (lixeira 🗑️)</li>
+      </ol>
+
+      <div style="text-align:right;margin-top:14px;">
+        <button class="btn btn-primary" onclick="document.getElementById('modalLimpezaPosEnvio').remove()" style="padding:10px 24px;">Fechar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
 }
 
 // ============================================
