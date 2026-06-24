@@ -1177,7 +1177,7 @@ const CONFIG = {
   urlConfigPowerAutomate: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/464482ea19714e50b858771991c0539d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=H29XBCpPy1dyMk7Gyj6LAWy8RKI8Q4mpUFdI5qanNKU',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.5.9'
+  versao: '1.5.9.1'
 };
 // ============================================
 
@@ -1223,6 +1223,21 @@ function aplicarModoVisibilidade() {
   });
   // Marcar body para CSS opcional
   document.body.dataset.modo = admin ? 'admin' : 'operador';
+
+  // Banner discreto no topo a indicar Modo Admin (validações não bloqueiam)
+  let banner = document.getElementById('bannerModoAdmin');
+  if (admin) {
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'bannerModoAdmin';
+      banner.style.cssText = 'background:#0d47a1;color:white;padding:6px 12px;text-align:center;font-size:0.82rem;font-weight:600;position:sticky;top:0;z-index:99;';
+      banner.innerHTML = '🛠️ <strong>Modo Admin</strong> — validações são apenas avisos, não bloqueiam (útil para reconstruir relatórios)';
+      document.body.insertBefore(banner, document.body.firstChild);
+    }
+  } else if (banner) {
+    banner.remove();
+  }
+
   console.log('[Modo] App em modo:', admin ? 'ADMIN' : 'OPERADOR', '(touch:', isTouchDevice(), ')');
 }
 
@@ -1994,8 +2009,19 @@ function validarPasso(n) {
   }
 
   if (erros.length > 0) {
-    alert('⚠️ Antes de avançar:\n\n• ' + erros.join('\n• '));
-    return false;
+    // 🛠️ Modo Admin (portatil + ?admin=1): preparas relatórios recuperados / impressos
+    // — validações continuam a aparecer como AVISO mas NÃO BLOQUEIAM
+    const ehModoAdmin = (typeof isModoAdmin === 'function') && isModoAdmin();
+    if (ehModoAdmin) {
+      console.warn('[Admin] Validação ignorada:', erros);
+      // Mostrar aviso curto mas continuar
+      if (typeof mostrarToast === 'function') {
+        mostrarToast('⚠️ Modo Admin: ' + erros.length + ' validação' + (erros.length > 1 ? 'ões' : '') + ' ignorada' + (erros.length > 1 ? 's' : ''));
+      }
+    } else {
+      alert('⚠️ Antes de avançar:\n\n• ' + erros.join('\n• '));
+      return false;
+    }
   }
 
   // Iniciar cronómetro ao avançar do Passo 1 (entrada no Passo 2)
@@ -3795,6 +3821,15 @@ function validarBasico(soAviso) {
   }
 
   if (erros.length > 0) {
+    // 🛠️ Modo Admin: avisa mas não bloqueia
+    const ehModoAdmin = (typeof isModoAdmin === 'function') && isModoAdmin();
+    if (ehModoAdmin) {
+      console.warn('[Admin] Validação envio ignorada:', erros);
+      if (typeof mostrarToast === 'function') {
+        mostrarToast('⚠️ Modo Admin: validações de envio ignoradas');
+      }
+      return true;
+    }
     alert('⚠️ Antes de enviar:\n\n• ' + erros.join('\n• '));
     return false;
   }
