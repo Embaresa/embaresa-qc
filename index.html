@@ -1155,6 +1155,15 @@
     <p style="font-size:0.85rem; color:#666; margin-top:12px;">
       <strong>Dica:</strong> use <em>Guardar</em> regularmente. Se a app fechar, os dados de formulário recuperam-se (fotos e assinaturas têm de ser refeitas).
     </p>
+
+    <div id="seccaoAdminAjuda" style="background:#e3f2fd; border:1px solid #2196f3; border-radius:8px; padding:10px 12px; margin-top:12px;">
+      <strong style="color:#0d47a1;">🛠️ Modo Admin</strong>
+      <p style="font-size:0.82rem; margin:6px 0 8px; line-height:1.4; color:#0d47a1;">
+        Modo técnico para administração. Permite avançar sem validações (útil para preparar relatórios para impressão / reconstruções).
+      </p>
+      <button class="btn" onclick="fecharModal('modalAjuda'); pedirPinAdmin();" style="background:#0d47a1; color:white; border:none; width:100%; padding:8px; border-radius:6px; cursor:pointer; font-weight:600;">🔓 Activar / Desactivar Modo Admin</button>
+    </div>
+
     <button class="btn btn-primary" onclick="fecharModal('modalAjuda')" style="width:100%; margin-top:12px;">Entendido</button>
   </div>
 </div>
@@ -1177,7 +1186,7 @@ const CONFIG = {
   urlConfigPowerAutomate: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/464482ea19714e50b858771991c0539d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=H29XBCpPy1dyMk7Gyj6LAWy8RKI8Q4mpUFdI5qanNKU',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.5.9.1'
+  versao: '1.6.3'
 };
 // ============================================
 
@@ -1200,17 +1209,70 @@ function isTouchDevice() {
          /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 }
 
+// Modo Admin agora é por PIN, gerido em memória (window._modoAdminAtivo).
+// Não persiste em localStorage — cada sessão exige PIN novo.
+// Mantemos compatibilidade com ?admin=1 (útil para testes via browser desktop).
 function isModoAdmin() {
-  // Touch device nunca é admin
+  // Touch device nunca é admin (mesmo com ?admin=1)
   if (isTouchDevice()) return false;
-  // Desktop só é admin com ?admin=1 (ou admin)
+  // Sessão em curso com PIN correcto
+  if (window._modoAdminAtivo === true) return true;
+  // Fallback: ?admin=1 na URL (para testes)
   const params = new URLSearchParams(window.location.search);
   return params.get('admin') === '1' || params.has('admin');
+}
+
+// PIN — default '1234' se nunca foi alterado, depois fica em localStorage
+const ADMIN_PIN_DEFAULT = '1234';
+function getAdminPin() {
+  try {
+    const cfg = JSON.parse(localStorage.getItem('embaresaQC_config') || '{}');
+    return cfg.adminPin || ADMIN_PIN_DEFAULT;
+  } catch (e) { return ADMIN_PIN_DEFAULT; }
+}
+function setAdminPin(novoPin) {
+  if (!novoPin || novoPin.length < 3) return false;
+  try {
+    const cfg = JSON.parse(localStorage.getItem('embaresaQC_config') || '{}');
+    cfg.adminPin = String(novoPin).trim();
+    localStorage.setItem('embaresaQC_config', JSON.stringify(cfg));
+    return true;
+  } catch (e) { return false; }
+}
+
+// Pedir PIN e activar Modo Admin
+function pedirPinAdmin() {
+  if (isTouchDevice()) {
+    alert('🚫 Modo Admin não está disponível em dispositivos móveis.');
+    return;
+  }
+  if (window._modoAdminAtivo === true) {
+    if (confirm('✅ Modo Admin já está activo.\n\nDeseja desactivar?')) {
+      desactivarModoAdmin();
+    }
+    return;
+  }
+  const pinIntroduzido = prompt('🔐 PIN do Modo Admin:');
+  if (pinIntroduzido === null) return;  // cancelou
+  if (pinIntroduzido.trim() === getAdminPin()) {
+    window._modoAdminAtivo = true;
+    if (typeof aplicarModoVisibilidade === 'function') aplicarModoVisibilidade();
+    if (typeof mostrarToast === 'function') mostrarToast('🛠️ Modo Admin activado');
+  } else {
+    alert('❌ PIN incorrecto.');
+  }
+}
+
+function desactivarModoAdmin() {
+  window._modoAdminAtivo = false;
+  if (typeof aplicarModoVisibilidade === 'function') aplicarModoVisibilidade();
+  if (typeof mostrarToast === 'function') mostrarToast('🔒 Modo Admin desactivado');
 }
 
 // Aplicar visibilidade conforme modo (chamado no init)
 function aplicarModoVisibilidade() {
   const admin = isModoAdmin();
+  const touch = isTouchDevice();
   // Selectores a esconder em modo Operador
   const adminOnlySelectors = [
     '#btnDefinicoes'
@@ -1221,6 +1283,10 @@ function aplicarModoVisibilidade() {
       el.style.display = admin ? '' : 'none';
     });
   });
+
+  // Esconder a secção "Activar Modo Admin" da Ajuda no telemóvel
+  const seccaoAdminAjuda = document.getElementById('seccaoAdminAjuda');
+  if (seccaoAdminAjuda) seccaoAdminAjuda.style.display = touch ? 'none' : '';
   // Marcar body para CSS opcional
   document.body.dataset.modo = admin ? 'admin' : 'operador';
 
@@ -1303,6 +1369,15 @@ function getConfigEmailDestino() {
     }
   } catch (e) {}
   return CONFIG.emailDestino;
+}
+
+// v1.6.0 — cópia de cada foto para a pasta Downloads.
+// DESLIGADA por defeito: era a principal causa de o telemóvel encher.
+function getBackupFotosDownloads() {
+  try {
+    const cfg = JSON.parse(localStorage.getItem('embaresaQC_config') || '{}');
+    return cfg.backupFotosDownloads === true;
+  } catch (e) { return false; }
 }
 
 function gravarConfig(cfg) {
@@ -1511,6 +1586,28 @@ function abrirDefinicoes() {
         <div class="def-info">Email para onde os relatórios são enviados (você, que depois reencaminha à Aernnova).</div>
       </div>
 
+      <div class="def-section" style="background:#fce4ec;border:1px solid #e91e63;">
+        <h4 style="color:#880e4f;">💾 Armazenamento</h4>
+        <div id="defEstadoArmazenamento" style="font-size:0.85rem;color:#880e4f;margin-bottom:10px;">A calcular…</div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:#333;margin-bottom:10px;cursor:pointer;">
+          <input type="checkbox" id="chkBackupFotos" ${getBackupFotosDownloads() ? 'checked' : ''} onchange="alternarBackupFotos(this.checked)" />
+          <span>Guardar cópia de cada foto na pasta Downloads</span>
+        </label>
+        <div class="def-info" style="margin-bottom:10px;">Desligado por defeito. Ligado, cria um ficheiro por foto no telemóvel — enche a memória em poucos dias.</div>
+        <button class="btn" onclick="limpezaEmergencia()" style="background:#e91e63;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;width:100%;">🧹 Limpeza de emergência</button>
+        <div class="def-info">Apaga o histórico de enviados e os rascunhos que não são de hoje. Os relatórios enviados estão no email.</div>
+      </div>
+
+      <div class="def-section" style="background:#e3f2fd;border:1px solid #2196f3;">
+        <h4 style="color:#0d47a1;">🔐 PIN do Modo Admin</h4>
+        <p style="font-size:0.82rem;color:#0d47a1;margin-bottom:8px;">PIN para activar Modo Admin (avisos não bloqueiam, Definições visíveis). PIN actual: <code>${escapeHtml(getAdminPin())}</code></p>
+        <div class="def-add-row">
+          <input type="text" id="novoPinAdminInput" placeholder="Novo PIN (mín. 3 caracteres)" maxlength="20" />
+          <button onclick="guardarPinAdmin()" style="background:#0d47a1;">🔐 Guardar</button>
+        </div>
+        <div class="def-info">Após gravar, vai precisar de introduzir o novo PIN da próxima vez. Se esquecer, será preciso editar manualmente o ficheiro index.html.</div>
+      </div>
+
       <div class="def-section" style="background:#fff3e0;border:1px solid #ffb74d;">
         <h4 style="color:#e65100;">↩️ Restaurar valores padrão</h4>
         <p style="font-size:0.82rem;color:#5d4037;margin-bottom:8px;">Volta às listas padrão (12 operadores e 2 clientes Aernnova). Útil se algo correr mal.</p>
@@ -1523,6 +1620,7 @@ function abrirDefinicoes() {
     </div>`;
   document.body.appendChild(modal);
   setTimeout(atualizarStatusSinc, 50);
+  setTimeout(atualizarEstadoArmazenamento, 60);
 }
 
 function fecharDefinicoes() {
@@ -1594,6 +1692,45 @@ function restaurarConfigPadrao() {
   localStorage.removeItem('embaresaQC_config');
   abrirDefinicoes();
   mostrarToast('↩️ Definições restauradas');
+}
+
+function alternarBackupFotos(ligado) {
+  gravarConfig({ backupFotosDownloads: !!ligado });
+  if (ligado) {
+    alert('⚠️ Cópia de fotos para Downloads LIGADA.\n\nCada foto vai criar um ficheiro no telemóvel. Lembre-se de apagar a pasta Downloads regularmente, senão a memória enche e a app deixa de funcionar.');
+  } else {
+    mostrarToast('✅ Cópia para Downloads desligada');
+  }
+}
+
+// Preencher o estado do armazenamento no modal Definições
+async function atualizarEstadoArmazenamento() {
+  const el = document.getElementById('defEstadoArmazenamento');
+  if (!el) return;
+  const est = await estadoArmazenamento();
+  if (!est) { el.textContent = 'Não disponível neste browser.'; return; }
+  const [rascunhos, enviados] = await Promise.all([listarRascunhosIDB(), listarEnviados()]);
+  const cor = est.percent >= 80 ? '#c62828' : est.percent >= 60 ? '#e65100' : '#2e7d32';
+  el.innerHTML =
+    `<div style="font-weight:600;color:${cor};">${est.usadoMB} MB usados de ${est.totalMB} MB (${est.percent}%)</div>` +
+    `<div style="height:8px;background:#eee;border-radius:4px;overflow:hidden;margin:6px 0;">` +
+      `<div style="height:100%;width:${Math.min(100, est.percent)}%;background:${cor};"></div>` +
+    `</div>` +
+    `<div style="font-size:0.8rem;color:#666;">${rascunhos.length} rascunho(s) • ${enviados.length} no histórico</div>`;
+}
+
+function guardarPinAdmin() {
+  const input = document.getElementById('novoPinAdminInput');
+  const novoPin = (input?.value || '').trim();
+  if (!novoPin) { alert('Indique um PIN.'); return; }
+  if (novoPin.length < 3) { alert('PIN demasiado curto (mínimo 3 caracteres).'); return; }
+  if (!confirm(`Mudar PIN do Modo Admin para "${novoPin}"?\n\nSe esquecer, será preciso editar manualmente o ficheiro index.html.`)) return;
+  if (setAdminPin(novoPin)) {
+    mostrarToast('🔐 PIN actualizado');
+    abrirDefinicoes();  // re-render
+  } else {
+    alert('Erro a guardar PIN.');
+  }
 }
 
 async function forcarSincColaboradores() {
@@ -1707,6 +1844,11 @@ const state = {
   checklist: {},
   signatures: {},
   cronometro: { sessoes: [], emPausa: false },
+  // v1.6.1 — turnos já encerrados e enviados. Cada turno regista a equipa que
+  // trabalhou, o que fez, e as assinaturas com que respondeu por esse trabalho.
+  // { numero, operador1, operador2, colaboradorAernnova, fotoIds[], checklistKeys[],
+  //   numSessoes, inicio, fim, assinaturas{}, enviadoEm }
+  turnos: [],
   currentStep: 1,
   _modoEnvio: 'final'  // 'parcial' quando enviado por pausa; 'final' (default) para envio normal
 };
@@ -1801,6 +1943,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auto-save robusto (IndexedDB) + tentativa de recuperação
   configurarAutoSave();
   tentarRecuperarRascunho();
+  // v1.6.0 — libertar espaço automaticamente ao arrancar (sem intervenção do operador)
+  setTimeout(limpezaAutomaticaArranque, 3000);
   // Inicializar contador de rascunhos no top-bar
   setTimeout(atualizarContadorRascunhos, 1000);
 });
@@ -1920,6 +2064,18 @@ function showStep(n) {
     btnAvancar.style.display = 'inline-block';
     btnEnviar.style.display = 'none';
   }
+
+  // v1.6.1 — a encerrar turno: no Passo 7 o botão de avançar dá lugar ao de encerrar
+  if (state._aEncerrarTurno && n === 7) {
+    btnAvancar.style.display = 'none';
+    btnEnviar.style.display = 'inline-block';
+    btnEnviar.innerHTML = `🏁 Encerrar e enviar Turno ${numeroTurnoActual()}`;
+    btnEnviar.style.background = 'linear-gradient(135deg, #3f51b5, #283593)';
+    btnEnviar.onclick = confirmarEncerrarTurno;
+  } else if (n === TOTAL_STEPS) {
+    btnEnviar.onclick = enviarRelatorio;
+  }
+
   indicator.textContent = `Passo ${n} de ${TOTAL_STEPS} — ${STEP_LABELS[n-1]}`;
 
   // Actualizar visibilidade do botão Pausar/Retomar
@@ -2306,6 +2462,284 @@ function pararLiveTimer() {
 }
 
 // Botão Pausar/Retomar — mostra modal de confirmação se for pausar; retoma directo
+// ============================================
+// v1.6.1 — TURNOS (equipas diferentes na mesma caixa)
+// ============================================
+// Um embalamento pode ser interrompido e retomado no dia seguinte por outra
+// equipa. Cada equipa encerra o seu turno, assina e envia um relatório com
+// APENAS o trabalho que fez. A caixa acaba com N documentos complementares,
+// cada um assinado por quem lá esteve.
+
+function normalizarTurnos() {
+  if (!Array.isArray(state.turnos)) state.turnos = [];
+  return state.turnos;
+}
+
+function numeroTurnoActual() {
+  return normalizarTurnos().length + 1;
+}
+
+function haTurnosAnteriores() {
+  return normalizarTurnos().length > 0;
+}
+
+// Ids de fotos já reportadas em turnos anteriores
+function fotoIdsJaReportados() {
+  const ids = new Set();
+  normalizarTurnos().forEach(t => (t.fotoIds || []).forEach(id => ids.add(id)));
+  return ids;
+}
+
+// Chaves de checklist já reportadas em turnos anteriores
+function checklistKeysJaReportadas() {
+  const keys = new Set();
+  normalizarTurnos().forEach(t => (t.checklistKeys || []).forEach(k => keys.add(k)));
+  return keys;
+}
+
+// Fotos que pertencem ao turno em curso (as que ainda não foram enviadas)
+function fotosDoTurnoActual() {
+  const jaEnviadas = fotoIdsJaReportados();
+  return (state.fotos || []).filter(f => !jaEnviadas.has(f.id));
+}
+
+// Itens de checklist marcados no turno em curso
+function checklistKeysDoTurnoActual() {
+  const jaEnviadas = checklistKeysJaReportadas();
+  return Object.keys(state.checklist || {}).filter(k => !jaEnviadas.has(k));
+}
+
+// Sessões do cronómetro que pertencem ao turno em curso
+function sessoesDoTurnoActual() {
+  normalizarCronometro();
+  const jaContadas = normalizarTurnos().reduce((s, t) => s + (t.numSessoes || 0), 0);
+  return state.cronometro.sessoes.slice(jaContadas);
+}
+
+// Tempo efectivo só do turno em curso
+function tempoTurnoActualMs() {
+  return sessoesDoTurnoActual().reduce((total, s) => {
+    if (!s.inicio) return total;
+    const fim = s.fim ? new Date(s.fim).getTime() : Date.now();
+    return total + Math.max(0, fim - new Date(s.inicio).getTime());
+  }, 0);
+}
+
+// Quando o relatório deve mostrar só o trabalho do turno em curso.
+// Num embalamento normal (uma só equipa, sem turnos) nada muda.
+function relatorioFiltradoPorTurno() {
+  return state._modoEnvio === 'turno' || haTurnosAnteriores();
+}
+
+// Passo 1 do fim de turno: fechar sessão e levar a equipa às assinaturas
+function encerrarTurno() {
+  const d = getDados();
+  if (!d.planoNum || d.numSerie === '—') {
+    alert('⚠️ Não é possível encerrar o turno sem plano e nº de série preenchidos.\n\nVolte ao Passo 1 e complete a identificação da caixa.');
+    return;
+  }
+
+  normalizarCronometro();
+  if (temSessaoEmCurso()) fecharSessaoActual();
+  state.cronometro.emPausa = true;
+  state._aEncerrarTurno = true;
+
+  if (typeof pararLiveTimer === 'function') pararLiveTimer();
+  autoSave(true);
+
+  showStep(7);
+  actualizarBotaoPausar();
+  mostrarBannerEncerrarTurno();
+}
+
+function mostrarBannerEncerrarTurno() {
+  let banner = document.getElementById('bannerEncerrarTurno');
+  if (banner) banner.remove();
+  banner = document.createElement('div');
+  banner.id = 'bannerEncerrarTurno';
+  banner.style.cssText = 'background:linear-gradient(135deg,#3f51b5,#283593);color:white;padding:12px 16px;border-radius:8px;margin-bottom:14px;font-size:0.9rem;line-height:1.5;';
+  banner.innerHTML =
+    `<strong style="font-size:1rem;">🏁 A encerrar o Turno ${numeroTurnoActual()}</strong><br>` +
+    `Os operadores desta equipa e o colaborador da Aernnova devem assinar agora, ` +
+    `antes de saírem. O relatório vai levar apenas o trabalho deste turno.`;
+  const card = document.querySelector('#step7 .card') || document.getElementById('step7');
+  if (card) card.insertBefore(banner, card.firstChild);
+}
+
+// Passo 2 do fim de turno: validar assinaturas, gerar e enviar o relatório do turno
+async function confirmarEncerrarTurno() {
+  const sigOK = (s) => s && typeof s === 'string' && s.length > 100 && s.startsWith('data:image/');
+  const d = getDados();
+  const faltam = [];
+  if (!d.operadorEmbaresa || d.operadorEmbaresa === '—') faltam.push('Operador Embaresa 1');
+  if (!sigOK(state.signatures.embaresa)) faltam.push('Assinatura do Operador Embaresa 1');
+  if (!sigOK(state.signatures.embaresa2)) faltam.push('Assinatura do Operador Embaresa 2');
+  if (!d.operadorCliente || d.operadorCliente === '—') faltam.push('Nome do colaborador Aernnova');
+  if (!sigOK(state.signatures.cliente)) faltam.push('Assinatura do colaborador Aernnova');
+
+  if (faltam.length && !isModoAdmin()) {
+    alert('⚠️ Para encerrar o turno falta:\n\n• ' + faltam.join('\n• ') +
+          '\n\nAs assinaturas têm de ser recolhidas antes de a equipa sair.');
+    return;
+  }
+
+  const nTurno = numeroTurnoActual();
+  const fotosTurno = fotosDoTurnoActual();
+  const sessoesTurno = sessoesDoTurnoActual();
+
+  if (!confirm(
+    `🏁 Encerrar o Turno ${nTurno}?\n\n` +
+    `• Equipa: ${d.operadorEmbaresa} / ${d.operadorEmbaresa2}\n` +
+    `• ${fotosTurno.length} foto(s) neste turno\n` +
+    `• ${sessoesTurno.length} sessão(ões) de trabalho\n\n` +
+    `O relatório deste turno vai ser enviado e a caixa fica em aberto ` +
+    `para a próxima equipa continuar.`
+  )) return;
+
+  // Marcar o modo antes de gerar o HTML — o relatório sai filtrado por turno
+  state._modoEnvio = 'turno';
+
+  try {
+    await enviarRelatorioTurno(d, nTurno, fotosTurno, sessoesTurno);
+  } catch (e) {
+    console.error('[Turno] Erro ao enviar:', e);
+    alert('Erro ao gerar o relatório do turno: ' + e.message + '\n\nO trabalho continua guardado no rascunho.');
+    state._modoEnvio = 'final';
+  }
+}
+
+async function enviarRelatorioTurno(d, nTurno, fotosTurno, sessoesTurno) {
+  const html = gerarRelatorioHTML();
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+
+  const dataFile = d.dataInput || new Date().toISOString().split('T')[0];
+  const snFile = (d.numSerie || 'novo').replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '');
+  const planoFile = (d.planoNum || '').replace(/\s+/g, '_');
+  const fileName = `Relatorio_TURNO${nTurno}_${snFile}_${planoFile}_${dataFile}.html`;
+  const file = new File([blob], fileName, { type: 'text/html' });
+
+  const subject = `[TURNO ${nTurno}] Relatório Embalamento — ${d.numSerie} — ${d.planoNum}`;
+  const body = `Olá Sónia,
+
+Fim de turno no embalamento da caixa ${d.numSerie}.
+
+Segue em anexo o relatório do TURNO ${nTurno}, com o trabalho desta equipa.
+O embalamento NÃO está concluído — a próxima equipa vai continuar.
+
+EQUIPA DESTE TURNO:
+Operador 1: ${d.operadorEmbaresa}
+Operador 2: ${d.operadorEmbaresa2}
+Colaborador Aernnova: ${d.operadorCliente}
+
+TRABALHO DESTE TURNO:
+Plano: ${d.planoNum} — ${d.planoNome}
+Fotos: ${fotosTurno.length}
+Sessões de trabalho: ${sessoesTurno.length}
+Tempo efectivo: ${formatarTempo(tempoTurnoActualMs())}
+
+Cumprimentos,
+${d.operadorEmbaresa}
+Embaresa PT — Embalamento
+`;
+
+  let enviado = false;
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ title: subject, text: body, files: [file] });
+      enviado = true;
+    } catch (err) {
+      console.log('[Turno] Share cancelado:', err);
+      return;   // não fecha o turno se a partilha foi cancelada
+    }
+  }
+
+  if (!enviado) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    const mailto = construirMailto(getConfigEmailDestino(), subject,
+      body + '\n[Anexar o ficheiro descarregado: ' + fileName + ']');
+    setTimeout(() => { window.location.href = mailto; }, 500);
+  }
+
+  await fecharTurnoNoEstado(d, nTurno, fotosTurno, sessoesTurno);
+  await gravarEnviado(html, d);
+  await removerHtmlAntigos();
+}
+
+// Regista o turno no estado e prepara a app para a equipa seguinte
+async function fecharTurnoNoEstado(d, nTurno, fotosTurno, sessoesTurno) {
+  normalizarTurnos();
+  state.turnos.push({
+    numero: nTurno,
+    operador1: d.operadorEmbaresa,
+    operador2: d.operadorEmbaresa2,
+    colaboradorAernnova: d.operadorCliente,
+    fotoIds: fotosTurno.map(f => f.id),
+    checklistKeys: checklistKeysDoTurnoActual(),
+    numSessoes: normalizarTurnos().reduce((s, t) => s + (t.numSessoes || 0), 0) + sessoesTurno.length,
+    inicio: sessoesTurno.length ? sessoesTurno[0].inicio : null,
+    fim: sessoesTurno.length ? sessoesTurno[sessoesTurno.length - 1].fim : null,
+    tempoMs: tempoTurnoActualMs(),
+    assinaturas: {
+      embaresa: state.signatures.embaresa,
+      embaresa2: state.signatures.embaresa2,
+      cliente: state.signatures.cliente
+    },
+    enviadoEm: new Date().toISOString()
+  });
+
+  // Limpar o que pertence à equipa que sai — a próxima equipa assina de novo.
+  // Envolvido em try/catch: uma falha a limpar a UI não pode abortar o
+  // encerramento do turno, que já foi registado acima.
+  state.signatures = {};
+  try {
+    limparAssinatura('sigEmbaresa');
+    limparAssinatura('sigEmbaresa2');
+    limparAssinatura('sigCliente');
+  } catch (e) { console.warn('[Turno] Falha a limpar assinaturas:', e); }
+  try {
+    ['operadorEmbaresa', 'operadorEmbaresa2', 'operadorCliente'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+  } catch (e) { console.warn('[Turno] Falha a limpar operadores:', e); }
+
+  state._aEncerrarTurno = false;
+  state._modoEnvio = 'final';
+  document.getElementById('bannerEncerrarTurno')?.remove();
+
+  await autoSave(true);      // o rascunho FICA — a caixa continua em aberto
+  actualizarBotaoPausar();
+  showStep(1);
+  mostrarBannerTurnoAberto();
+
+  alert(`✅ Turno ${nTurno} encerrado e enviado.\n\n` +
+        `A caixa ${d.numSerie} fica guardada em "📂 Rascunhos".\n\n` +
+        `A próxima equipa abre o rascunho, indica os seus nomes no Passo 1 e continua o trabalho.`);
+}
+
+// Aviso permanente de que esta caixa já tem turnos fechados
+function mostrarBannerTurnoAberto() {
+  document.getElementById('bannerTurnoAberto')?.remove();
+  if (!haTurnosAnteriores()) return;
+  const turnos = normalizarTurnos();
+  const banner = document.createElement('div');
+  banner.id = 'bannerTurnoAberto';
+  banner.style.cssText = 'background:#e8eaf6;border:2px solid #3f51b5;color:#1a237e;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:0.88rem;line-height:1.5;';
+  banner.innerHTML =
+    `<strong>🏁 Caixa com ${turnos.length} turno${turnos.length !== 1 ? 's' : ''} já encerrado${turnos.length !== 1 ? 's' : ''}</strong> — ` +
+    `este é o <strong>Turno ${numeroTurnoActual()}</strong>.<br>` +
+    `<span style="font-size:0.82rem;">` +
+    turnos.map(t => `Turno ${t.numero}: ${escapeHtml(t.operador1 || '—')} / ${escapeHtml(t.operador2 || '—')} (${(t.fotoIds || []).length} fotos)`).join(' • ') +
+    `<br>Indique os nomes da equipa de hoje no Passo 1. O relatório final levará só o trabalho deste turno.</span>`;
+  const container = document.querySelector('.container') || document.body;
+  const primeiro = container.querySelector('.card');
+  if (primeiro) container.insertBefore(banner, primeiro);
+}
+
 function pedirConfirmacaoPausa() {
   normalizarCronometro();
   if (state.cronometro.sessoes.length === 0) {
@@ -2322,18 +2756,60 @@ function pedirConfirmacaoPausa() {
     return;
   }
 
-  // Está a correr → pedir confirmação para pausar
-  if (!confirm('⏸️ Pausar embalamento?\n\nO cronómetro vai parar. Pode retomar quando quiser.\n\nO tempo da pausa NÃO conta para o relatório final.')) {
-    return;
-  }
+  // Está a correr → perguntar que tipo de paragem é
+  mostrarModalTipoPausa();
+}
 
-  // Confirmou — pausar (silenciosamente, sem enviar relatório parcial)
+// Duas paragens diferentes: pausa curta (volta hoje) ou fim de turno (equipa sai)
+function mostrarModalTipoPausa() {
+  let modal = document.getElementById('modalTipoPausa');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'modalTipoPausa';
+  modal.className = 'modal-overlay active';
+  const nTurno = numeroTurnoActual();
+  const nFotos = fotosDoTurnoActual().length;
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:540px;">
+      <h3 style="margin-top:0;color:#1a1a2e;">⏸️ Parar o embalamento</h3>
+      <p style="font-size:0.9rem;color:#555;line-height:1.5;">A equipa volta a este embalamento ainda hoje?</p>
+
+      <button onclick="escolherPausaCurta()" style="width:100%;text-align:left;background:#fff8e1;border:2px solid #ff9800;border-radius:8px;padding:14px;margin-bottom:12px;cursor:pointer;">
+        <div style="font-weight:700;color:#e65100;font-size:1rem;">⏸️ Pausa — volto já</div>
+        <div style="font-size:0.85rem;color:#5d4037;margin-top:4px;line-height:1.4;">
+          O cronómetro pára e o tempo da pausa não conta. Retoma-se no mesmo relatório.
+        </div>
+      </button>
+
+      <button onclick="escolherFimDeTurno()" style="width:100%;text-align:left;background:#e8eaf6;border:2px solid #3f51b5;border-radius:8px;padding:14px;cursor:pointer;">
+        <div style="font-weight:700;color:#1a237e;font-size:1rem;">🏁 Fim de turno — a equipa vai sair</div>
+        <div style="font-size:0.85rem;color:#283593;margin-top:4px;line-height:1.4;">
+          Recolhe as assinaturas desta equipa e envia o <strong>Turno ${nTurno}</strong>
+          com o trabalho feito${nFotos > 0 ? ` (${nFotos} foto${nFotos !== 1 ? 's' : ''})` : ''}.
+          A caixa fica em aberto para a próxima equipa continuar.
+        </div>
+      </button>
+
+      <div style="text-align:right;margin-top:14px;">
+        <button class="btn btn-secondary" onclick="document.getElementById('modalTipoPausa').remove()">Cancelar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function escolherPausaCurta() {
+  document.getElementById('modalTipoPausa')?.remove();
   fecharSessaoActual();
   state.cronometro.emPausa = true;
   if (typeof autoSave === 'function') autoSave();
   iniciarLiveTimer();
   actualizarBotaoPausar();
   mostrarToast('⏸️ Embalamento pausado');
+}
+
+function escolherFimDeTurno() {
+  document.getElementById('modalTipoPausa')?.remove();
+  encerrarTurno();
 }
 
 // Função antiga "toggleCronometro" mantida para compatibilidade (não é chamada actualmente)
@@ -2576,10 +3052,13 @@ async function onPhotoSelected(event, stepKey) {
       const dataUrl = await comprimirImagem(file, maxSize, quality);
       state.fotos.push({ id: nextPhotoId++, dataUrl, label: '', step: stepKey });
 
-      // Salvaguarda — guardar cópia da foto comprimida na pasta Downloads do dispositivo
-      // Isto sobrevive a apagamento do rascunho IndexedDB
-      try { await guardarFotoLocalmente(dataUrl, stepKey); }
-      catch (e) { console.warn('[Backup foto] falhou:', e); }
+      // ⚠️ v1.6.0 — cópia para Downloads DESLIGADA por defeito.
+      // Motivo: enchia a memória do telemóvel em poucos dias (centenas de ficheiros),
+      // o que fazia a app deixar de gravar e ficar branca. Pode ligar-se nas Definições.
+      if (getBackupFotosDownloads()) {
+        try { await guardarFotoLocalmente(dataUrl, stepKey); }
+        catch (e) { console.warn('[Backup foto] falhou:', e); }
+      }
     } catch (e) {
       console.error('Erro ao processar foto:', e);
     }
@@ -3110,12 +3589,29 @@ function gerarRelatorioHTML() {
   const d = getDados();
   const ehEmbalagem = d.planoTipo === 'EMBALAGEM';
 
+  // v1.6.1 — em embalamentos repartidos por turnos, cada relatório leva apenas
+  // o trabalho da equipa que o assina.
+  const porTurno = relatorioFiltradoPorTurno();
+  const fotosParaMostrar = porTurno ? fotosDoTurnoActual() : (state.fotos || []);
+  const keysDesteTurno = porTurno ? new Set(checklistKeysDoTurnoActual()) : null;
+  const nTurno = numeroTurnoActual();
+  const ehTurnoIntermedio = state._modoEnvio === 'turno';
+
   let checklistHTML = '';
   if (ehEmbalagem) {
     checklistHTML = '<table class="rep-table"><thead><tr><th>Item</th><th>Estado</th></tr></thead><tbody>';
+    let algumItem = false;
     CHECKLIST_TEMPLATE.forEach(group => {
+      // Em modo turno, só mostrar secções com itens verificados por esta equipa
+      const itensVisiveis = group.items.filter(item => {
+        const key = `${group.section}::${item}`;
+        if (!porTurno) return true;
+        return keysDesteTurno.has(key);
+      });
+      if (itensVisiveis.length === 0) return;
+      algumItem = true;
       checklistHTML += `<tr class="rep-section-row"><td colspan="2"><strong>${group.section}</strong></td></tr>`;
-      group.items.forEach(item => {
+      itensVisiveis.forEach(item => {
         const key = `${group.section}::${item}`;
         const v = state.checklist[key];
         const display = v === 'ok' ? '<span class="rep-ok">✓ OK</span>' :
@@ -3125,12 +3621,24 @@ function gerarRelatorioHTML() {
       });
     });
     checklistHTML += '</tbody></table>';
+    if (!algumItem) {
+      checklistHTML = '<p style="color:#999;">— sem itens verificados neste turno —</p>';
+    }
+    // Nota de rastreabilidade: quantos itens foram verificados ao todo
+    if (porTurno) {
+      const totalItens = CHECKLIST_TEMPLATE.reduce((s, g) => s + g.items.length, 0);
+      const verificadosTotal = Object.keys(state.checklist || {}).length;
+      checklistHTML += `<p style="font-size:0.82rem;color:#666;margin-top:8px;">
+        Itens verificados <strong>neste turno</strong>: ${keysDesteTurno.size}.
+        Acumulado nesta caixa: ${verificadosTotal} de ${totalItens}.
+        Os restantes constam dos relatórios dos outros turnos.</p>`;
+    }
   }
 
   // Fotos organizadas por passo
-  const fotosHTML = state.fotos.length === 0 ? '<p style="color:#999;">— sem fotos —</p>' :
+  const fotosHTML = fotosParaMostrar.length === 0 ? '<p style="color:#999;">— sem fotos —</p>' :
     Object.entries(PHOTO_STEPS).map(([key, info]) => {
-      const fotosDoPasso = state.fotos.filter(f => f.step === key);
+      const fotosDoPasso = fotosParaMostrar.filter(f => f.step === key);
       if (fotosDoPasso.length === 0) return '';
       return `
         <div class="rep-photo-section">
@@ -3257,7 +3765,21 @@ function gerarRelatorioHTML() {
       O embalamento foi pausado e será retomado posteriormente. Este é um registo intermédio do progresso.
     </div>
   </div>` : ''}
-  <h1>📦 Relatório de Embalamento${state._modoEnvio === 'parcial' ? ' <span style="color:#e65100;font-size:0.7em;">[PARCIAL]</span>' : ''}</h1>
+  ${porTurno ? `
+  <div style="background:linear-gradient(135deg,#e8eaf6,#c5cae9);border:2px solid #3f51b5;border-radius:8px;padding:16px;margin-bottom:20px;">
+    <div style="font-size:1.05rem;font-weight:700;color:#1a237e;text-align:center;">
+      🏁 TURNO ${nTurno}${ehTurnoIntermedio ? '' : ' — FINAL'} • Caixa ${escapeHtml(d.numSerie)}
+    </div>
+    <div style="font-size:0.86rem;color:#283593;margin-top:8px;line-height:1.5;">
+      Este embalamento foi executado por mais do que uma equipa. Este documento regista
+      <strong>apenas o trabalho do Turno ${nTurno}</strong> e é assinado pela equipa que o executou.
+      ${ehTurnoIntermedio
+        ? 'O embalamento <strong>não está concluído</strong> — a próxima equipa dará continuidade.'
+        : 'Este é o <strong>último turno</strong>: a caixa foi concluída e fechada.'}
+      ${haTurnosAnteriores() ? `<br>Turnos anteriores desta caixa: ${normalizarTurnos().map(t => `<strong>Turno ${t.numero}</strong> (${escapeHtml(t.operador1 || '—')} / ${escapeHtml(t.operador2 || '—')})`).join(', ')}.` : ''}
+    </div>
+  </div>` : ''}
+  <h1>📦 Relatório de Embalamento${state._modoEnvio === 'parcial' ? ' <span style="color:#e65100;font-size:0.7em;">[PARCIAL]</span>' : ''}${porTurno ? ` <span style="color:#3f51b5;font-size:0.7em;">[TURNO ${nTurno}${ehTurnoIntermedio ? '' : ' — FINAL'}]</span>` : ''}</h1>
   <div class="rep-header">Embaresa PT — Controlo de Qualidade • ${d.dataFormatada}</div>
 
   <h2>1. Identificação</h2>
@@ -3376,11 +3898,14 @@ function gerarRelatorioHTML() {
       emailCC: d.emailCC,
       requerVideos: d.requerVideos
     },
-    fotos: state.fotos,
+    fotos: fotosParaMostrar,
     videosE2: state.videosE2,
-    checklist: state.checklist,
+    checklist: porTurno
+      ? Object.fromEntries(Object.entries(state.checklist || {}).filter(([k]) => keysDesteTurno.has(k)))
+      : state.checklist,
     signatures: state.signatures,
-    cronometro: state.cronometro
+    cronometro: state.cronometro,
+    turnos: state.turnos || []
   }))}<\/script>
 </body>
 </html>`;
@@ -3845,6 +4370,9 @@ function mostrarSucesso(msg) {
 // Chamado SEMPRE após envio bem-sucedido (tanto operador como admin podem precisar)
 function mostrarModalLimpezaPosEnvio(d, numFotos) {
   if (!numFotos || numFotos === 0) return;
+  // v1.6.0 — só faz sentido se a cópia para Downloads estiver ligada.
+  // Estando desligada (defeito), não há ficheiros para apagar.
+  if (!getBackupFotosDownloads()) return;
   const snFile = d.numSerie && d.numSerie !== '—' ? d.numSerie.replace(/\s+/g, '-') : 'sem-serie';
   const planoFile = d.planoNum || 'sem-plano';
   const filtro = `EmbaresaQC_${snFile}_${planoFile}_`;
@@ -3924,6 +4452,9 @@ const DB_VERSION = 2;
 const DB_KEY_LEGACY = 'rascunhoActual';  // chave única antiga (v1)
 const MAX_HISTORICO = 10;
 const DIAS_HISTORICO = 30;
+// v1.6.0 — limites de retenção dos rascunhos (cada um contém as fotos em base64)
+const MAX_RASCUNHOS = 6;    // acima disto, os mais antigos são apagados
+const DIAS_RASCUNHO = 10;   // era 60 — demasiado para um telemóvel partilhado
 
 let dbInstance = null;
 let autoSavePending = null;
@@ -4097,7 +4628,12 @@ async function gravarEnviado(html, dados) {
       planoNome: dados.planoNome,
       numEncomenda: dados.numEncomenda,
       operadorEmbaresa: dados.operadorEmbaresa,
-      html: html,  // HTML completo do relatório
+      // ⚠️ v1.6.0 — o HTML completo (com as fotos em base64) só é guardado para
+      // o relatório MAIS RECENTE. Guardar 10 cópias ocupava 50-100 MB e era a
+      // segunda maior causa de o armazenamento esgotar.
+      // Os relatórios anteriores ficam só com os dados de identificação —
+      // o ficheiro em si está no email da Sónia.
+      html: html,
       filtroFotosDownloads: filtroFotos,  // Filtro para apagar no admin
       numFotos: (state.fotos || []).length
     };
@@ -4105,8 +4641,9 @@ async function gravarEnviado(html, dados) {
       const tx = db.transaction(DB_STORE_ENVIADOS, 'readwrite');
       const store = tx.objectStore(DB_STORE_ENVIADOS);
       store.put(registo, key);
-      tx.oncomplete = () => {
-        limparEnviadosAntigos();
+      tx.oncomplete = async () => {
+        await removerHtmlAntigos();   // manter HTML só no mais recente
+        await limparEnviadosAntigos();
         resolve();
       };
     });
@@ -4168,6 +4705,128 @@ async function apagarEnviado(key) {
   } catch (e) {}
 }
 
+// ============================================
+// v1.6.0 — GESTÃO DE ARMAZENAMENTO
+// ============================================
+// Estimativa de espaço usado/disponível pelo browser para esta app.
+async function estadoArmazenamento() {
+  try {
+    if (!navigator.storage || !navigator.storage.estimate) return null;
+    const est = await navigator.storage.estimate();
+    const usadoMB = est.usage ? est.usage / 1048576 : 0;
+    const totalMB = est.quota ? est.quota / 1048576 : 0;
+    return {
+      usadoMB: Math.round(usadoMB * 10) / 10,
+      totalMB: Math.round(totalMB),
+      percent: totalMB > 0 ? Math.round((usadoMB / totalMB) * 100) : 0
+    };
+  } catch (e) { return null; }
+}
+
+// Limpeza automática ao arrancar — corre em silêncio, sem perguntar nada.
+// Só avisa se o armazenamento estiver mesmo em estado crítico.
+async function limpezaAutomaticaArranque() {
+  try {
+    const libertados = await removerHtmlAntigos();
+    await limparEnviadosAntigos();
+    if (libertados > 1048576) {
+      console.log('[Limpeza] Libertados', Math.round(libertados / 1048576), 'MB de histórico antigo.');
+    }
+
+    const est = await estadoArmazenamento();
+    if (est && est.percent >= 80) {
+      const msg = `⚠️ Armazenamento quase cheio (${est.usadoMB} MB de ${est.totalMB} MB).\n\n` +
+                  `A app pode deixar de gravar os relatórios.\n\n` +
+                  `Abra "📂 Rascunhos" e descarte os que já foram enviados.`;
+      alert(msg);
+    } else if (est) {
+      console.log('[Armazenamento]', est.usadoMB, 'MB de', est.totalMB, 'MB (' + est.percent + '%)');
+    }
+  } catch (e) {
+    console.warn('[Limpeza] falhou:', e);
+  }
+}
+
+// Limpeza de emergência — apaga TUDO o que já não é necessário.
+// Mantém apenas os rascunhos de hoje que ainda não foram enviados.
+async function limpezaEmergencia() {
+  const antes = await estadoArmazenamento();
+  if (!confirm(
+    '🧹 LIMPEZA DE EMERGÊNCIA\n\n' +
+    'Vai apagar:\n' +
+    '• Todo o histórico de relatórios enviados\n' +
+    '• Todos os rascunhos que NÃO sejam de hoje\n\n' +
+    'Os relatórios enviados já estão no email — não se perde nada.\n' +
+    'Os rascunhos de hoje são preservados.\n\n' +
+    'Continuar?'
+  )) return;
+
+  try {
+    // 1. Apagar todo o histórico de enviados
+    const enviados = await listarEnviados();
+    for (const r of enviados) await apagarEnviado(r.key);
+
+    // 2. Apagar rascunhos que não sejam de hoje
+    const hoje = new Date().toDateString();
+    const rascunhos = await listarRascunhosIDB();
+    let apagados = 0;
+    for (const r of rascunhos) {
+      const ts = r.value.dataUltimaActividade || r.value.timestamp;
+      const data = ts ? new Date(ts) : null;
+      if (!data || data.toDateString() !== hoje) {
+        await apagarRascunhoIDB(r.key);
+        apagados++;
+      }
+    }
+
+    await atualizarContadorRascunhos();
+    const depois = await estadoArmazenamento();
+    const libertado = (antes && depois) ? Math.max(0, antes.usadoMB - depois.usadoMB) : 0;
+    alert(
+      `✅ Limpeza concluída.\n\n` +
+      `• ${enviados.length} registo(s) de histórico apagado(s)\n` +
+      `• ${apagados} rascunho(s) antigo(s) apagado(s)\n` +
+      (libertado > 0 ? `• ~${Math.round(libertado)} MB libertados\n` : '') +
+      (depois ? `\nArmazenamento agora: ${depois.usadoMB} MB (${depois.percent}%)` : '')
+    );
+  } catch (e) {
+    alert('Erro durante a limpeza: ' + e.message);
+  }
+}
+
+// v1.6.0 — remove o HTML pesado de todos os enviados excepto o mais recente.
+// Mantém os dados de identificação (série, plano, data, operador) para consulta.
+// Devolve o número de MB libertados (aproximado).
+async function removerHtmlAntigos() {
+  try {
+    const lista = await listarEnviados();   // já vem ordenada, mais recente primeiro
+    if (lista.length <= 1) return 0;
+    const aAliviar = lista.slice(1).filter(r => r.html);
+    if (!aAliviar.length) return 0;
+    let bytesLibertados = 0;
+    const db = await abrirIndexedDB();
+    const tx = db.transaction(DB_STORE_ENVIADOS, 'readwrite');
+    const store = tx.objectStore(DB_STORE_ENVIADOS);
+    aAliviar.forEach(r => {
+      bytesLibertados += (r.html || '').length;
+      const semHtml = Object.assign({}, r);
+      delete semHtml.html;
+      semHtml.htmlRemovido = true;
+      store.put(semHtml, r.key);
+    });
+    return new Promise(resolve => {
+      tx.oncomplete = () => {
+        console.log('[Histórico] HTML antigo removido:', Math.round(bytesLibertados / 1048576 * 10) / 10, 'MB');
+        resolve(bytesLibertados);
+      };
+      tx.onerror = () => resolve(0);
+    });
+  } catch (e) {
+    console.error('[Histórico] Erro a remover HTML antigo:', e);
+    return 0;
+  }
+}
+
 function recolherEstadoCompleto() {
   const v = (id, def = '') => {
     const el = document.getElementById(id);
@@ -4201,7 +4860,8 @@ function recolherEstadoCompleto() {
     videosE2: state.videosE2,
     checklist: state.checklist,
     signatures: state.signatures,
-    cronometro: state.cronometro
+    cronometro: state.cronometro,
+    turnos: state.turnos || []
   };
 }
 
@@ -4213,6 +4873,13 @@ function autoSave(imediato) {
     autoSavePending = null;
     try {
       const dados = recolherEstadoCompleto();
+      // v1.6.2 — não criar rascunho enquanto não houver conteúdo real.
+      // Antes, bastava alguém abrir a app e tocar num campo para nascer um
+      // "(rascunho sem série)" que ficava na lista a estorvar. Se o rascunho
+      // já existe (foi criado antes), continua a ser gravado normalmente.
+      if (!rascunhoValeAPenaGravar(dados) && !rascunhoActualKey) {
+        return;
+      }
       await gravarRascunhoIDB(dados);
       // Indicador visual subtil — mostra "guardado" momentaneamente
       mostrarAutoSaveStatus();
@@ -4227,6 +4894,15 @@ function autoSave(imediato) {
     // Debounce de 1 segundo (evita gravar a cada caractere digitado)
     autoSavePending = setTimeout(fazer, 1000);
   }
+}
+
+// Há conteúdo que justifique ocupar espaço e aparecer na lista de rascunhos?
+function rascunhoValeAPenaGravar(dados) {
+  const f = dados.formData || {};
+  const temSerie = f.numSerie && String(f.numSerie).trim() !== '';
+  const temFotos = (dados.fotos || []).length > 0;
+  const temChecklist = Object.keys(dados.checklist || {}).length > 0;
+  return temSerie || temFotos || temChecklist;
 }
 
 function mostrarAutoSaveStatus() {
@@ -4271,6 +4947,40 @@ function configurarAutoSave() {
   });
 }
 
+// ============================================
+// v1.6.2 — CLASSIFICAÇÃO DE RASCUNHOS
+// ============================================
+// Nem todos os rascunhos valem o mesmo. Tratá-los todos igual fazia com que a
+// lista enchesse de lixo e o aviso de trabalho pendente disparasse todos os
+// dias — até deixar de ser lido.
+//
+//   'vazio'    → ninguém chegou a começar. Apaga-se sozinho ao fim de 1 dia.
+//   'iniciado' → começou-se pouco (sem fotos, passos iniciais). 3 dias.
+//   'trabalho' → há trabalho a sério em risco. 10 dias, e SÓ estes geram aviso.
+function classificarRascunho(v) {
+  const f = (v && v.formData) || {};
+  const nFotos = (v.fotos || []).length;
+  const nCheck = Object.keys(v.checklist || {}).length;
+  const passo = v.currentStep || 1;
+  const temSerie = f.numSerie && String(f.numSerie).trim() !== '';
+  const temTurnos = Array.isArray(v.turnos) && v.turnos.length > 0;
+
+  if (temTurnos) return 'trabalho';                       // caixa repartida por equipas
+  if (nFotos >= 3 || passo >= 5 || nCheck >= 4) return 'trabalho';
+  if (temSerie || nFotos > 0 || nCheck > 0) return 'iniciado';
+  return 'vazio';
+}
+
+const DIAS_POR_CLASSE = { vazio: 1, iniciado: 3, trabalho: DIAS_RASCUNHO };
+
+function rascunhoExpirou(v) {
+  const ts = v.dataUltimaActividade ? new Date(v.dataUltimaActividade).getTime()
+           : (v.timestamp || 0);
+  if (!ts) return true;
+  const dias = DIAS_POR_CLASSE[classificarRascunho(v)] || DIAS_RASCUNHO;
+  return (Date.now() - ts) > dias * 24 * 60 * 60 * 1000;
+}
+
 async function tentarRecuperarRascunho() {
   const lista = await listarRascunhosIDB();
   if (!lista.length) return;
@@ -4279,20 +4989,32 @@ async function tentarRecuperarRascunho() {
   const rascunhosAntigos = [];  // não de hoje
   const rascunhosHoje = [];     // de hoje
 
-  // Limpar rascunhos com mais de 60 dias (sanitização)
-  const limiteAntigo = Date.now() - (60 * 24 * 60 * 60 * 1000);
+  // v1.6.0 — retenção reduzida de 60 → 10 dias.
+  // Cada rascunho contém as fotos todas em base64; 60 dias de acumulação
+  // esgotava o armazenamento e a app deixava de gravar.
+  const limiteAntigo = Date.now() - (DIAS_RASCUNHO * 24 * 60 * 60 * 1000);
+
+  // Limite duro de quantidade: acima de MAX_RASCUNHOS, apaga os mais antigos
+  if (lista.length > MAX_RASCUNHOS) {
+    const ordenada = lista.slice().sort((a, b) => {
+      const ta = new Date(a.value.dataUltimaActividade || a.value.timestamp || 0).getTime();
+      const tb = new Date(b.value.dataUltimaActividade || b.value.timestamp || 0).getTime();
+      return tb - ta;   // mais recente primeiro
+    });
+    for (const r of ordenada.slice(MAX_RASCUNHOS)) {
+      console.warn('[Rascunhos] Limite excedido — a apagar antigo:', r.key);
+      await apagarRascunhoIDB(r.key);
+      const i = lista.findIndex(x => x.key === r.key);
+      if (i >= 0) lista.splice(i, 1);
+    }
+  }
 
   for (const r of lista) {
     const v = r.value;
     const ts = v.timestamp || (v.dataUltimaActividade ? new Date(v.dataUltimaActividade).getTime() : 0);
-    if (ts < limiteAntigo) {
-      await apagarRascunhoIDB(r.key);
-      continue;
-    }
-    // Verificar se tem dados relevantes
-    const temDados = (v.formData && (v.formData.planoNum || v.formData.numSerie)) ||
-                     (v.fotos && v.fotos.length > 0);
-    if (!temDados) {
+    // v1.6.2 — validade conforme a classe: lixo sai depressa, trabalho a sério fica
+    if (rascunhoExpirou(v)) {
+      console.log('[Rascunhos] Expirou (' + classificarRascunho(v) + '):', r.key);
       await apagarRascunhoIDB(r.key);
       continue;
     }
@@ -4304,9 +5026,11 @@ async function tentarRecuperarRascunho() {
     }
   }
 
-  // 1. Se há rascunhos antigos (de outros dias) → modal forte de aviso
-  if (rascunhosAntigos.length > 0) {
-    setTimeout(() => mostrarModalTrabalhoPendente(rascunhosAntigos), 500);
+  // 1. Aviso de trabalho pendente — SÓ para rascunhos com trabalho a sério.
+  //    Antes disparava para tudo, todos os dias, e os operadores deixaram de o ler.
+  const pendentesASerio = rascunhosAntigos.filter(r => classificarRascunho(r.value) === 'trabalho');
+  if (pendentesASerio.length > 0) {
+    setTimeout(() => mostrarModalTrabalhoPendente(pendentesASerio), 500);
   }
 
   // 2. Se há rascunhos de hoje → recuperar o mais recente
@@ -4369,6 +5093,9 @@ function mostrarModalTrabalhoPendente(rascunhos) {
         </div>
         <div style="font-size:0.82rem;color:#666;margin-bottom:10px;">
           📍 Passo ${passo} • 📷 ${numFotos} foto${numFotos !== 1 ? 's' : ''} • 🕒 ${escapeHtml(dataStr)}
+          ${[f.operadorEmbaresa, f.operadorEmbaresa2].filter(Boolean).length
+            ? `<br>👤 ${escapeHtml([f.operadorEmbaresa, f.operadorEmbaresa2].filter(Boolean).join(' / '))}`
+            : ''}
         </div>
         <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;">
           <button class="btn btn-primary btn-sm" onclick="abrirRascunho('${r.key}');document.getElementById('modalPendente').remove();">📂 Continuar este</button>
@@ -4654,6 +5381,11 @@ async function limparEstadoParaNovo() {
   state.cronometro = { sessoes: [], emPausa: false };
   state.currentStep = 1;
   state._modoEnvio = 'final';
+  // v1.6.1 — caixa nova: sem turnos anteriores
+  state.turnos = [];
+  state._aEncerrarTurno = false;
+  document.getElementById('bannerTurnoAberto')?.remove();
+  document.getElementById('bannerEncerrarTurno')?.remove();
   // Parar timer live
   if (typeof pararLiveTimer === 'function') pararLiveTimer();
   // Limpar UI das fotos por passo
@@ -4680,11 +5412,14 @@ async function limparEstadoParaNovo() {
 async function atualizarContadorRascunhos() {
   try {
     const lista = await listarRascunhosIDB();
+    // v1.6.3 — o número no botão tem de bater certo com o que a lista mostra:
+    // só embalamentos com trabalho a sério.
+    const relevantes = lista.filter(r => classificarRascunho(r.value) === 'trabalho');
     const contador = document.getElementById('contadorRascunhos');
     if (!contador) return;
-    if (lista.length > 0) {
+    if (relevantes.length > 0) {
       contador.style.display = 'inline-block';
-      contador.textContent = lista.length;
+      contador.textContent = relevantes.length;
     } else {
       contador.style.display = 'none';
     }
@@ -4695,9 +5430,16 @@ async function atualizarContadorRascunhos() {
 // LISTA DE RASCUNHOS (modal)
 // ============================================
 async function abrirListaRascunhos() {
-  const lista = await listarRascunhosIDB();
+  const todos = await listarRascunhosIDB();
   const hoje = new Date().toDateString();
   const ontem = new Date(Date.now() - 24*60*60*1000).toDateString();
+
+  // v1.6.3 — a lista mostra apenas rascunhos com trabalho a sério.
+  // Os vazios e mal começados continuam gravados (protecção contra crash e
+  // recuperação automática no mesmo dia) mas deixam de estorvar a lista.
+  const comTrabalho = todos.filter(r => classificarRascunho(r.value) === 'trabalho');
+  const semTrabalho = todos.filter(r => classificarRascunho(r.value) !== 'trabalho');
+  const lista = window._verRascunhosMenores ? todos : comTrabalho;
 
   let modal = document.getElementById('modalRascunhos');
   if (modal) modal.remove();
@@ -4705,11 +5447,28 @@ async function abrirListaRascunhos() {
   modal.id = 'modalRascunhos';
   modal.className = 'modal-overlay active';
 
+  const linhaMenores = semTrabalho.length > 0 ? `
+    <div style="border-top:1px solid #eee;margin-top:14px;padding-top:10px;text-align:center;">
+      <button onclick="window._verRascunhosMenores = !window._verRascunhosMenores; abrirListaRascunhos();"
+              style="background:none;border:none;color:#888;font-size:0.82rem;cursor:pointer;text-decoration:underline;">
+        ${window._verRascunhosMenores
+          ? 'ocultar os que não têm trabalho'
+          : `+ ${semTrabalho.length} sem trabalho relevante (mostrar)`}
+      </button>
+      ${window._verRascunhosMenores ? `
+        <div style="margin-top:8px;">
+          <button class="btn btn-sm" onclick="limparRascunhosSemTrabalho()" style="background:#757575;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;">
+            🧹 Descartar todos estes
+          </button>
+        </div>` : ''}
+    </div>` : '';
+
   if (lista.length === 0) {
     modal.innerHTML = `
       <div class="modal-card" style="max-width:500px;">
         <h3 style="margin-top:0;color:#1a1a2e;">📂 Rascunhos guardados</h3>
-        <p style="text-align:center;color:#888;padding:20px;">Sem rascunhos guardados.</p>
+        <p style="text-align:center;color:#888;padding:20px;">Nenhum embalamento por terminar.</p>
+        ${linhaMenores}
         <div style="text-align:right;">
           <button class="btn btn-secondary" onclick="document.getElementById('modalRascunhos').remove()">Fechar</button>
         </div>
@@ -4742,14 +5501,29 @@ async function abrirListaRascunhos() {
     const planoNome = f.planoNum && PLANOS_DB[f.planoNum] ? PLANOS_DB[f.planoNum].nome : '';
     const passo = v.currentStep || 1;
     const numFotos = (v.fotos || []).length;
+    // v1.6.2 — quem está a trabalhar nesta caixa. Num telemóvel partilhado
+    // é isto que permite ao operador reconhecer o seu à primeira vista.
+    const equipa = [f.operadorEmbaresa, f.operadorEmbaresa2].filter(Boolean).join(' / ');
+    const classe = classificarRascunho(v);
+    const etiquetaClasse = classe === 'trabalho'
+      ? '<span style="background:#3f51b5;color:white;padding:1px 6px;border-radius:4px;font-size:0.7rem;">TRABALHO</span>'
+      : classe === 'iniciado'
+      ? '<span style="background:#9e9e9e;color:white;padding:1px 6px;border-radius:4px;font-size:0.7rem;">mal começado</span>'
+      : '<span style="background:#e0e0e0;color:#666;padding:1px 6px;border-radius:4px;font-size:0.7rem;">vazio</span>';
     return `
       <div style="border:1px solid ${isAtivo ? '#28a745' : '#ddd'};border-radius:8px;padding:12px;margin-bottom:10px;background:${isAtivo ? '#e8f5e9' : 'white'};">
         <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:6px;">
           <div style="flex:1;">
             <div style="font-weight:600;color:#1a1a2e;">${escapeHtml(tituloChave)} ${isAtivo ? '✅ activo' : ''}</div>
             <div style="font-size:0.85rem;color:#666;">${escapeHtml(plano)}${planoNome ? ' — ' + escapeHtml(planoNome.substring(0, 40)) : ''}</div>
+            ${equipa
+              ? `<div style="font-size:0.88rem;color:#0d47a1;font-weight:600;margin-top:3px;">👤 ${escapeHtml(equipa)}</div>`
+              : `<div style="font-size:0.82rem;color:#999;margin-top:3px;">👤 sem operador indicado</div>`}
           </div>
-          ${tagData}
+          <div style="text-align:right;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+            ${tagData}
+            ${etiquetaClasse}
+          </div>
         </div>
         <div style="font-size:0.8rem;color:#888;margin-bottom:8px;">
           📍 Passo ${passo} • 📷 ${numFotos} foto${numFotos !== 1 ? 's' : ''} • 🕒 ${escapeHtml(dataStr)}
@@ -4763,9 +5537,10 @@ async function abrirListaRascunhos() {
 
   modal.innerHTML = `
     <div class="modal-card" style="max-width:600px;max-height:85vh;overflow:auto;">
-      <h3 style="margin-top:0;color:#1a1a2e;">📂 Rascunhos guardados (${lista.length})</h3>
-      <p style="font-size:0.85rem;color:#666;">Cada rascunho é um relatório em curso. Pode abrir para continuar ou descartar.</p>
+      <h3 style="margin-top:0;color:#1a1a2e;">📂 Embalamentos por terminar (${comTrabalho.length})</h3>
+      <p style="font-size:0.85rem;color:#666;">Cada um é um embalamento em curso. Abra para continuar, ou descarte.</p>
       <div>${itensHTML}</div>
+      ${linhaMenores}
       <div style="text-align:right;margin-top:10px;">
         <button class="btn btn-secondary" onclick="document.getElementById('modalRascunhos').remove()">Fechar</button>
       </div>
@@ -4792,6 +5567,27 @@ async function abrirRascunho(key) {
   mostrarToast('📂 Rascunho aberto');
 }
 
+// Descarta de uma vez todos os rascunhos sem trabalho relevante.
+// Nunca toca nos que estão classificados como 'trabalho'.
+async function limparRascunhosSemTrabalho() {
+  const lista = await listarRascunhosIDB();
+  const aApagar = lista.filter(r =>
+    classificarRascunho(r.value) !== 'trabalho' && r.key !== rascunhoActualKey
+  );
+  if (aApagar.length === 0) {
+    mostrarToast('Não há rascunhos para descartar.');
+    return;
+  }
+  if (!confirm(
+    `Descartar ${aApagar.length} rascunho(s) sem trabalho relevante?\n\n` +
+    `Não são tocados os que têm fotos ou já vão adiantados, nem o que está aberto agora.`
+  )) return;
+  for (const r of aApagar) await apagarRascunhoIDB(r.key);
+  await atualizarContadorRascunhos();
+  await abrirListaRascunhos();
+  mostrarToast(`🧹 ${aApagar.length} rascunho(s) descartado(s)`);
+}
+
 async function confirmarApagarRascunho(key, titulo) {
   if (!confirm(`Descartar definitivamente o rascunho "${titulo}"?\n\nEsta acção não pode ser desfeita.`)) return;
   await apagarRascunhoIDB(key);
@@ -4816,6 +5612,9 @@ async function aplicarRascunho(r) {
   if (r.videosE2) state.videosE2 = r.videosE2;
   state.signatures = r.signatures || {};
   if (r.cronometro) state.cronometro = r.cronometro;
+  // v1.6.1 — restaurar turnos já encerrados desta caixa
+  state.turnos = Array.isArray(r.turnos) ? r.turnos : [];
+  setTimeout(mostrarBannerTurnoAberto, 200);
   if (!state.cronometro) state.cronometro = { sessoes: [], emPausa: false };
   normalizarCronometro();
 
@@ -5081,7 +5880,9 @@ async function abrirHistoricoEnviados() {
         <div style="font-size:0.85rem;color:#666;">${escapeHtml((r.planoNome || '').substring(0, 60))}</div>
         <div style="font-size:0.8rem;color:#888;margin-top:4px;">📅 Enviado em ${escapeHtml(dataStr)} por ${escapeHtml(r.operadorEmbaresa || '—')}</div>
         <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;">
-          <button class="btn btn-primary btn-sm" onclick="reabrirRelatorioEnviado('${r.key}')">📄 Reabrir / Reenviar</button>
+          ${r.htmlRemovido || !r.html
+            ? '<span style="font-size:0.78rem;color:#999;align-self:center;">ficheiro no email</span>'
+            : `<button class="btn btn-primary btn-sm" onclick="reabrirRelatorioEnviado('${r.key}')">📄 Reabrir / Reenviar</button>`}
           ${adminCleanupBtn}
         </div>
       </div>`;
