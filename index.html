@@ -1190,7 +1190,7 @@ const CONFIG = {
   urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.6.4'
+  versao: '1.6.5'
 };
 // ============================================
 
@@ -2972,15 +2972,115 @@ function atualizarTags() {
 // ============================================
 // FOTOS COM COMPRESSÃO
 // ============================================
-// Captura uma foto para um passo específico
+// Captura uma foto para um passo específico.
+// No Windows (tablet Zebra/Edge) o input de ficheiro NÃO abre a câmara — abre o explorador.
+// Por isso usamos a webcam via getUserMedia (funciona no Windows E offline). Fallback: input.
 function capturarFoto(stepKey) {
-  // Criar input dinâmico para cada chamada
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    abrirCamara(stepKey).catch((e) => {
+      console.warn('[Câmara] falhou, uso input de ficheiro:', e);
+      capturarFotoFicheiro(stepKey);
+    });
+    return;
+  }
+  capturarFotoFicheiro(stepKey);
+}
+
+// Fallback antigo (input de ficheiro) — usado se a câmara não estiver disponível
+function capturarFotoFicheiro(stepKey) {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
   input.capture = 'environment';
   input.onchange = (e) => onPhotoSelected(e, stepKey);
   input.click();
+}
+
+// Reduz um canvas para maxSize e devolve JPEG comprimido (igual à lógica de comprimirImagem)
+function canvasParaDataUrl(src, maxSize, quality) {
+  let w = src.width, h = src.height;
+  if (Math.max(w, h) > maxSize) {
+    if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+    else { w = Math.round(w * maxSize / h); h = maxSize; }
+  }
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  c.getContext('2d').drawImage(src, 0, 0, w, h);
+  return c.toDataURL('image/jpeg', quality);
+}
+
+// Câmara dentro da app (webcam ao vivo + tirar foto). Fica aberta para tirar várias.
+let _camStream = null;
+function abrirCamara(stepKey) {
+  return new Promise(async (resolve, reject) => {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false
+      });
+    } catch (e) { reject(e); return; }
+    _camStream = stream;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'camaraOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:#000;z-index:100000;display:flex;flex-direction:column;';
+
+    const video = document.createElement('video');
+    video.autoplay = true; video.playsInline = true; video.muted = true;
+    video.setAttribute('playsinline', '');
+    video.style.cssText = 'flex:1;width:100%;min-height:0;object-fit:contain;background:#000;';
+    video.srcObject = stream;
+
+    const conta = document.createElement('div');
+    conta.style.cssText = 'position:absolute;top:12px;left:12px;background:rgba(0,0,0,.55);color:#fff;padding:6px 12px;border-radius:20px;font-family:Arial;font-size:14px;';
+    const nDoStep = () => (state.fotos || []).filter(f => f.step === stepKey).length;
+    conta.textContent = '📷 ' + nDoStep() + ' foto(s) neste passo';
+
+    const barra = document.createElement('div');
+    barra.style.cssText = 'display:flex;gap:14px;justify-content:center;align-items:center;padding:18px 16px;background:#111;';
+    const btnFechar = document.createElement('button');
+    btnFechar.textContent = '✓ Concluir';
+    btnFechar.style.cssText = 'background:#334155;color:#fff;border:none;border-radius:14px;padding:18px 24px;font-size:17px;font-weight:700;cursor:pointer;';
+    const btnTirar = document.createElement('button');
+    btnTirar.textContent = '📷 Tirar Foto';
+    btnTirar.style.cssText = 'background:#2563eb;color:#fff;border:none;border-radius:14px;padding:18px 34px;font-size:19px;font-weight:800;cursor:pointer;';
+    barra.appendChild(btnFechar);
+    barra.appendChild(btnTirar);
+
+    overlay.appendChild(video);
+    overlay.appendChild(conta);
+    overlay.appendChild(barra);
+    document.body.appendChild(overlay);
+
+    const fechar = () => {
+      try { stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+      _camStream = null;
+      if (overlay.parentNode) overlay.remove();
+    };
+
+    btnFechar.onclick = () => { fechar(); resolve(); };
+
+    btnTirar.onclick = () => {
+      if (!video.videoWidth) { mostrarToast('A câmara ainda está a iniciar…'); return; }
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      const total = (state.fotos || []).length + 1;
+      let quality = 0.7, maxSize = 1600;
+      if (total > 25) { quality = 0.55; maxSize = 1200; }
+      else if (total > 15) { quality = 0.65; maxSize = 1400; }
+      const dataUrl = canvasParaDataUrl(canvas, maxSize, quality);
+      state.fotos.push({ id: nextPhotoId++, dataUrl, label: '', step: stepKey });
+      renderFotosStep(stepKey);
+      autoSave(true);
+      conta.textContent = '📷 ' + nDoStep() + ' foto(s) neste passo';
+      // feedback visual rápido
+      btnTirar.textContent = '✓ Tirada!';
+      setTimeout(() => { btnTirar.textContent = '📷 Tirar Foto'; }, 700);
+    };
+  });
 }
 
 async function onPhotoSelected(event, stepKey) {
