@@ -683,7 +683,6 @@
     <button class="btn btn-secondary btn-sm" onclick="novoRelatorio()">🔄 Novo</button>
     <button class="btn btn-secondary btn-sm" onclick="abrirListaRascunhos()">📂 Rascunhos <span id="contadorRascunhos" style="background:#ff9800;color:white;border-radius:10px;padding:1px 6px;font-size:0.75rem;font-weight:bold;display:none;margin-left:3px;">0</span></button>
     <button class="btn btn-secondary btn-sm" onclick="abrirHistoricoEnviados()">📚 Enviados</button>
-    <button class="btn btn-secondary btn-sm" onclick="abrirRecuperarFotos()" style="background:#fff3e0;border:1px solid #ff9800;color:#e65100;">🆘 Recuperar de Fotos</button>
     <button class="btn btn-secondary btn-sm" onclick="abrirRelatorioExistente()">📁 Abrir HTML</button>
     <button class="btn btn-secondary btn-sm" id="btnDefinicoes" onclick="abrirDefinicoes()">⚙️ Definições</button>
     <button class="btn btn-secondary btn-sm" onclick="abrirAjuda()">❓ Ajuda</button>
@@ -793,7 +792,7 @@
 
       <!-- Checkbox: vídeos E2 -->
       <div style="background:linear-gradient(135deg,#fff3e0,#ffe0b2);border:2px solid #ff9800;border-radius:8px;padding:14px;margin-top:16px;">
-        <label style="display:flex;align-items:center;cursor:pointer;font-weight:600;color:#e65100;">
+        <label style="display:none;align-items:center;cursor:pointer;font-weight:600;color:#e65100;">
           <input type="checkbox" id="requerVideos" style="margin-right:10px;width:20px;height:20px;cursor:pointer;" onchange="onVideosToggle()">
           <span>🎥 Esta embalagem requer vídeos (E2 / cliente exigiu)</span>
         </label>
@@ -1190,7 +1189,7 @@ const CONFIG = {
   urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.6.5'
+  versao: '1.6.7'
 };
 // ============================================
 
@@ -1957,9 +1956,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // PWA — SERVICE WORKER, OFFLINE, INSTALL
 // ============================================
 function registarServiceWorker() {
-  if ('serviceWorker' in navigator) { /* standalone online: cache offline (funciona no cliente sem WiFi) */
+  if ('serviceWorker' in navigator) { /* standalone online: cache offline (cliente sem WiFi) */
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('service-worker.js')
+      navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' })
         .then(reg => {
           console.log('[PWA] Service Worker registado:', reg.scope);
           // Verificar updates a cada vez que a app abre
@@ -2260,13 +2259,12 @@ function onPlanoChange() {
 
 // Quando o checkbox "Esta embalagem requer vídeos" é tocado
 function onVideosToggle() {
+  // VÍDEOS REMOVIDOS DA APP (2026-08-20). Ficam sempre desligados.
+  // Para REATIVAR: repor  const ativo = cb.checked;  (e o toggle .show por 'ativo') e reativar o checkbox.
   const cb = document.getElementById('requerVideos');
-  if (!cb) return;
-  cb.dataset.touchedByUser = '1';
-  const ativo = cb.checked;
-  document.querySelectorAll('.e2-only').forEach(el => el.classList.toggle('show', ativo));
-  document.querySelectorAll('.e2-only-inline').forEach(el => el.classList.toggle('show', ativo));
-  if (ativo && typeof renderVideosE2 === 'function') renderVideosE2();
+  if (cb) { cb.checked = false; cb.dataset.touchedByUser = '1'; }
+  document.querySelectorAll('.e2-only').forEach(el => el.classList.remove('show'));
+  document.querySelectorAll('.e2-only-inline').forEach(el => el.classList.remove('show'));
   if (typeof autoSave === 'function') autoSave();
 }
 
@@ -3010,18 +3008,28 @@ function canvasParaDataUrl(src, maxSize, quality) {
 }
 
 // Câmara dentro da app (webcam ao vivo + tirar foto). Fica aberta para tirar várias.
+// No Windows o facingMode nem sempre escolhe a traseira -> botao "Trocar camara" + memoriza a escolha.
 let _camStream = null;
+let _camDevices = [];
+async function _pararCamStream() {
+  if (_camStream) { try { _camStream.getTracks().forEach(t => t.stop()); } catch (e) {} _camStream = null; }
+}
+async function _arrancarCam(video, deviceId) {
+  await _pararCamStream();
+  const constraints = deviceId
+    ? { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }
+    : { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false };
+  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  _camStream = stream;
+  video.srcObject = stream;
+  try { _camDevices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput'); } catch (e) {}
+  return stream;
+}
+function _idCamAtual() {
+  try { const t = _camStream && _camStream.getVideoTracks()[0]; const s = t && t.getSettings ? t.getSettings() : {}; return s.deviceId || ''; } catch (e) { return ''; }
+}
 function abrirCamara(stepKey) {
   return new Promise(async (resolve, reject) => {
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: false
-      });
-    } catch (e) { reject(e); return; }
-    _camStream = stream;
-
     const overlay = document.createElement('div');
     overlay.id = 'camaraOverlay';
     overlay.style.cssText = 'position:fixed;inset:0;background:#000;z-index:100000;display:flex;flex-direction:column;';
@@ -3030,7 +3038,13 @@ function abrirCamara(stepKey) {
     video.autoplay = true; video.playsInline = true; video.muted = true;
     video.setAttribute('playsinline', '');
     video.style.cssText = 'flex:1;width:100%;min-height:0;object-fit:contain;background:#000;';
-    video.srcObject = stream;
+
+    // arrancar com a camara memorizada; senao a traseira (environment); fallback: qualquer
+    const guardado = localStorage.getItem('qc_camId') || '';
+    try {
+      try { await _arrancarCam(video, guardado || null); }
+      catch (e1) { await _arrancarCam(video, null); }
+    } catch (e) { reject(e); return; }
 
     const conta = document.createElement('div');
     conta.style.cssText = 'position:absolute;top:12px;left:12px;background:rgba(0,0,0,.55);color:#fff;padding:6px 12px;border-radius:20px;font-family:Arial;font-size:14px;';
@@ -3038,14 +3052,18 @@ function abrirCamara(stepKey) {
     conta.textContent = '📷 ' + nDoStep() + ' foto(s) neste passo';
 
     const barra = document.createElement('div');
-    barra.style.cssText = 'display:flex;gap:14px;justify-content:center;align-items:center;padding:18px 16px;background:#111;';
+    barra.style.cssText = 'display:flex;gap:12px;justify-content:center;align-items:center;padding:18px 16px;background:#111;flex-wrap:wrap;';
     const btnFechar = document.createElement('button');
     btnFechar.textContent = '✓ Concluir';
-    btnFechar.style.cssText = 'background:#334155;color:#fff;border:none;border-radius:14px;padding:18px 24px;font-size:17px;font-weight:700;cursor:pointer;';
+    btnFechar.style.cssText = 'background:#334155;color:#fff;border:none;border-radius:14px;padding:16px 22px;font-size:16px;font-weight:700;cursor:pointer;';
+    const btnTrocar = document.createElement('button');
+    btnTrocar.textContent = '🔄 Trocar câmara';
+    btnTrocar.style.cssText = 'background:#475569;color:#fff;border:none;border-radius:14px;padding:16px 20px;font-size:15px;font-weight:700;cursor:pointer;';
     const btnTirar = document.createElement('button');
     btnTirar.textContent = '📷 Tirar Foto';
-    btnTirar.style.cssText = 'background:#2563eb;color:#fff;border:none;border-radius:14px;padding:18px 34px;font-size:19px;font-weight:800;cursor:pointer;';
+    btnTirar.style.cssText = 'background:#2563eb;color:#fff;border:none;border-radius:14px;padding:16px 32px;font-size:19px;font-weight:800;cursor:pointer;';
     barra.appendChild(btnFechar);
+    barra.appendChild(btnTrocar);
     barra.appendChild(btnTirar);
 
     overlay.appendChild(video);
@@ -3053,13 +3071,17 @@ function abrirCamara(stepKey) {
     overlay.appendChild(barra);
     document.body.appendChild(overlay);
 
-    const fechar = () => {
-      try { stream.getTracks().forEach(t => t.stop()); } catch (e) {}
-      _camStream = null;
-      if (overlay.parentNode) overlay.remove();
-    };
-
+    const fechar = () => { _pararCamStream(); if (overlay.parentNode) overlay.remove(); };
     btnFechar.onclick = () => { fechar(); resolve(); };
+
+    btnTrocar.onclick = async () => {
+      if (!_camDevices || _camDevices.length < 2) { mostrarToast('Só há uma câmara neste aparelho.'); return; }
+      let idx = _camDevices.findIndex(d => d.deviceId === _idCamAtual());
+      idx = (idx + 1) % _camDevices.length;
+      const id = _camDevices[idx].deviceId;
+      try { await _arrancarCam(video, id); localStorage.setItem('qc_camId', id); mostrarToast('Câmara trocada.'); }
+      catch (e) { mostrarToast('Não consegui trocar de câmara.'); }
+    };
 
     btnTirar.onclick = () => {
       if (!video.videoWidth) { mostrarToast('A câmara ainda está a iniciar…'); return; }
@@ -4314,8 +4336,9 @@ Embaresa PT — Embalamento
     if (keyParaApagar) { await apagarRascunhoIDB(keyParaApagar); }
     await atualizarContadorRascunhos();
     state.fotos = [];
-    if (_r.ok) mostrarSucesso('✅ Relatório enviado para ' + destEmail + ' (com as fotos).\n\nNão precisas de fazer mais nada.');
-    else mostrarSucesso('💾 Sem WiFi — relatório GUARDADO.\n\nVai ser enviado sozinho para ' + destEmail + ' quando voltares à empresa (WiFi). Não precisas de fazer mais nada.');
+    if (_r.ok) mostrarSucesso('✅ Relatório enviado para ' + destEmail + ' (com as fotos).\n\nA app vai começar um novo relatório.');
+    else mostrarSucesso('💾 Sem WiFi — relatório GUARDADO.\n\nVai ser enviado sozinho para ' + destEmail + ' quando voltares à empresa (WiFi).\n\nA app vai começar um novo relatório.');
+    if (typeof limparEstadoParaNovo === 'function') await limparEstadoParaNovo();   // ir automaticamente para NOVO relatório após envio
   } else {
     mostrarToast('⚠️ Não consegui enviar nem guardar. Tenta de novo.');
   }
