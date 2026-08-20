@@ -1,6 +1,6 @@
 // Embaresa QC — Service Worker
-// Versão: incrementar quando publicar nova versão para forçar update no telemóvel
-const CACHE_VERSION = 'embaresa-qc-v1-6-3';
+// Versão: incrementar quando publicar nova versão para forçar update no telemóvel/tablet
+const CACHE_VERSION = 'embaresa-qc-v1-6-4';
 const ASSETS = [
   './',
   './index.html',
@@ -33,7 +33,7 @@ self.addEventListener('fetch', (event) => {
   const isOwnOrigin = url.origin === self.location.origin;
 
   if (!isOwnOrigin) {
-    // Pedidos a domínios externos (ex: links OneDrive) — passar directo, não cachear
+    // Pedidos a dominios externos (ex: fluxos Power Automate) — passar directo, nao cachear
     return;
   }
 
@@ -41,14 +41,14 @@ self.addEventListener('fetch', (event) => {
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
       return fetch(event.request).then((response) => {
-        // Cachear apenas respostas válidas
+        // Cachear apenas respostas validas
         if (response && response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
           caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, clone));
         }
         return response;
       }).catch(() => {
-        // Sem rede — devolver index.html como fallback para navegação
+        // Sem rede — devolver index.html como fallback para navegacao
         if (event.request.mode === 'navigate') {
           return caches.match('./index.html');
         }
@@ -57,7 +57,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Mensagem opcional do app para forçar update
+// Mensagem opcional do app para forcar update
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();

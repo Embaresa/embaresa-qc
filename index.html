@@ -1185,8 +1185,12 @@ const CONFIG = {
   // É o MESMO fluxo da app Produção (acao: 'lerConfigs')
   urlConfigPowerAutomate: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/464482ea19714e50b858771991c0539d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=H29XBCpPy1dyMk7Gyj6LAWy8RKI8Q4mpUFdI5qanNKU',
 
+  // Endpoint Power Automate — envia o relatorio por email PELO SERVIDOR (anexo com fotos).
+  // Resolve os 3 problemas: enche o telemovel / emails duplicados / emails sem fotos.
+  urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
+
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.6.3'
+  versao: '1.6.4'
 };
 // ============================================
 
@@ -1953,7 +1957,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // PWA — SERVICE WORKER, OFFLINE, INSTALL
 // ============================================
 function registarServiceWorker() {
-  if ('serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator) { /* standalone online: cache offline (funciona no cliente sem WiFi) */
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('service-worker.js')
         .then(reg => {
@@ -2642,27 +2646,12 @@ ${d.operadorEmbaresa}
 Embaresa PT — Embalamento
 `;
 
-  let enviado = false;
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({ title: subject, text: body, files: [file] });
-      enviado = true;
-    } catch (err) {
-      console.log('[Turno] Share cancelado:', err);
-      return;   // não fecha o turno se a partilha foi cancelada
-    }
-  }
-
-  if (!enviado) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = fileName;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    const mailto = construirMailto(getConfigEmailDestino(), subject,
-      body + '\n[Anexar o ficheiro descarregado: ' + fileName + ']');
-    setTimeout(() => { window.location.href = mailto; }, 500);
-  }
+  const destTurno = d.emailCliente || getConfigEmailDestino();
+  mostrarToast('📤 A enviar o relatório de turno...');
+  const rT = await enviarOuFilar(destTurno, subject, body, fileName, html);
+  if (!rT.ok && !rT.filado) { mostrarToast('⚠️ Não consegui enviar nem guardar o turno. Tenta de novo — o turno NÃO foi fechado.'); return; }
+  if (rT.ok) mostrarSucesso('✅ Relatório de turno enviado para ' + destTurno + ' (com as fotos).');
+  else mostrarSucesso('💾 Sem WiFi — turno guardado. Envia sozinho quando voltares à empresa.');
 
   await fecharTurnoNoEstado(d, nTurno, fotosTurno, sessoesTurno);
   await gravarEnviado(html, d);
@@ -2893,38 +2882,12 @@ ${d.operadorEmbaresa}
 Embaresa PT — Embalamento
 `;
 
-    // Tentar Web Share API com ficheiro (Android Chrome / iOS Safari)
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({
-          title: subject,
-          text: body,
-          files: [file]
-        });
-        mostrarToast('⏸️ Pausa registada. Relatório parcial enviado.');
-        return;
-      } catch (err) {
-        console.log('[Share parcial] Cancelado ou erro:', err);
-      }
-    }
-
-    // Fallback: download + mailto
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-
-    const destEmail = getConfigEmailDestino();
-    const mailto = construirMailto(destEmail, subject, body + '\n[Anexar o ficheiro descarregado: ' + fileName + ']');
-
-    setTimeout(() => {
-      window.location.href = mailto;
-      mostrarToast('⏸️ Pausa registada. Anexe o ficheiro descarregado ao email.');
-    }, 500);
+    // Enviar pela nuvem (servidor); se offline, fica na fila e envia quando a WiFi voltar
+    const destParcial = d.emailCliente || getConfigEmailDestino();
+    const rP = await enviarOuFilar(destParcial, subject, body, fileName, html);
+    if (rP.ok) { mostrarToast('⏸️ Pausa registada. Relatório parcial enviado para ' + destParcial + '.'); }
+    else if (rP.filado) { mostrarToast('⏸️ Pausa registada. Parcial guardado — envia sozinho quando voltares à empresa.'); }
+    else { mostrarToast('⏸️ Pausa registada. Não consegui enviar nem guardar o parcial.'); }
 
   } catch (err) {
     console.error('Erro ao gerar relatório parcial:', err);
@@ -3907,6 +3870,7 @@ function gerarRelatorioHTML() {
     cronometro: state.cronometro,
     turnos: state.turnos || []
   }))}<\/script>
+<a href="sistema.html" title="Menu do Sistema Embaresa" style="position:fixed;left:12px;bottom:12px;z-index:2147483647;background:#0d151c;color:#26c9e2;border:1px solid #26c9e2;border-radius:20px;padding:8px 14px;font:600 13px system-ui,sans-serif;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.45)">&#8962; Menu</a>
 </body>
 </html>`;
   return html;
@@ -4026,6 +3990,7 @@ function gerarFichaRastreabilidade() {
   <div class="no-print" style="text-align:center;margin-top:20px;">
     <button onclick="window.print()" style="padding:10px 20px;background:#00d4ff;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">🖨️ Imprimir / Guardar PDF</button>
   </div>
+<a href="sistema.html" title="Menu do Sistema Embaresa" style="position:fixed;left:12px;bottom:12px;z-index:2147483647;background:#0d151c;color:#26c9e2;border:1px solid #26c9e2;border-radius:20px;padding:8px 14px;font:600 13px system-ui,sans-serif;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.45)">&#8962; Menu</a>
 </body>
 </html>`;
   return html;
@@ -4069,8 +4034,77 @@ function previsualizarRelatorio() {
 // ============================================
 // ENVIO POR EMAIL
 // ============================================
+// ============================================
+// ENVIO PELA NUVEM (fluxo Power Automate) — fiavel, com anexo, sem descarregar nada
+// ============================================
+async function enviarViaFluxo(para, assunto, corpo, nomeFicheiro, html) {
+  const url = CONFIG.urlEnviarQC;
+  if (!url) { console.error('[QC] urlEnviarQC nao configurado'); return false; }
+  try {
+    const ficheiro = btoa(unescape(encodeURIComponent(html)));   // HTML (UTF-8) -> base64
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ para: para || '', assunto: assunto || '', corpo: corpo || '', nomeFicheiro: nomeFicheiro || 'Relatorio.html', ficheiro })
+    });
+    return r.ok;
+  } catch (e) { console.error('[QC] envio pela nuvem falhou:', e); return false; }
+}
+
+// ============================================
+// FILA DE ENVIO OFFLINE — no cliente (sem WiFi) guarda; na empresa (WiFi) envia sozinho
+// ============================================
+function _filaDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('EmbaresaQC_Fila', 1);
+    r.onupgradeneeded = e => { const db = e.target.result; if (!db.objectStoreNames.contains('fila')) db.createObjectStore('fila', { keyPath: 'id' }); };
+    r.onsuccess = e => res(e.target.result);
+    r.onerror = e => rej(e.target.error);
+  });
+}
+async function _filaAdd(item) {
+  const db = await _filaDB();
+  return new Promise((res, rej) => { const tx = db.transaction('fila', 'readwrite'); tx.objectStore('fila').put(item); tx.oncomplete = () => res(); tx.onerror = e => rej(e.target.error); });
+}
+async function _filaLista() {
+  const db = await _filaDB();
+  return new Promise((res, rej) => { const tx = db.transaction('fila', 'readonly'); const rq = tx.objectStore('fila').getAll(); rq.onsuccess = () => res(rq.result || []); rq.onerror = e => rej(e.target.error); });
+}
+async function _filaDel(id) {
+  const db = await _filaDB();
+  return new Promise((res, rej) => { const tx = db.transaction('fila', 'readwrite'); tx.objectStore('fila').delete(id); tx.oncomplete = () => res(); tx.onerror = e => rej(e.target.error); });
+}
+// Tenta enviar; se falhar (sem internet), guarda na fila. { ok, filado }
+async function enviarOuFilar(para, assunto, corpo, nomeFicheiro, html) {
+  const ok = await enviarViaFluxo(para, assunto, corpo, nomeFicheiro, html);
+  if (ok) return { ok: true, filado: false };
+  try {
+    await _filaAdd({ id: 'q_' + Date.now() + '_' + Math.floor(Math.random() * 1000), para, assunto, corpo, nomeFicheiro, html, criadoEm: new Date().toISOString() });
+    return { ok: false, filado: true };
+  } catch (e) { console.error('[Fila] falha a guardar:', e); return { ok: false, filado: false }; }
+}
+// Envia tudo o que está na fila (quando a WiFi volta)
+let _aProcessarFila = false;
+async function processarFilaEnvio() {
+  if (_aProcessarFila || !navigator.onLine || !CONFIG.urlEnviarQC) return;
+  _aProcessarFila = true;
+  try {
+    const itens = await _filaLista(); let n = 0;
+    for (const it of itens) { const ok = await enviarViaFluxo(it.para, it.assunto, it.corpo, it.nomeFicheiro, it.html); if (ok) { await _filaDel(it.id); n++; } }
+    if (n > 0 && typeof mostrarToast === 'function') mostrarToast('✅ ' + n + ' relatório(s) guardado(s) foram enviados (WiFi de volta).');
+  } catch (e) { console.warn('[Fila] erro a processar:', e); }
+  finally { _aProcessarFila = false; }
+}
+window.addEventListener('online', processarFilaEnvio);
+setInterval(processarFilaEnvio, 60000);
+setTimeout(processarFilaEnvio, 3000);
+
 async function enviarRelatorio() {
+  if (state._aEnviar) { mostrarToast('⏳ Já estou a enviar — aguarda.'); return; }  // bloqueio de duplo-envio
   if (!validarBasico(false)) return;
+  state._aEnviar = true;
+  const _btnEnv = document.getElementById('btnEnviar'); if (_btnEnv) _btnEnv.disabled = true;
+  const _resetEnvio = () => { state._aEnviar = false; if (_btnEnv) _btnEnv.disabled = false; };
 
   // Detectar se está em Modo Revisão (Sónia a editar relatório recebido)
   const banner = document.getElementById('bannerModoEdicao');
@@ -4078,7 +4112,7 @@ async function enviarRelatorio() {
 
   // Avisar se estiver offline
   if (!navigator.onLine) {
-    if (!confirm('⚠️ Está sem ligação à internet.\n\nO relatório vai ser preparado mas não poderá ser enviado até voltar a ter rede.\n\nContinuar mesmo assim?')) return;
+    if (!confirm('⚠️ Está sem ligação à internet.\n\nO relatório precisa de rede para ser enviado.\n\nTenta outra vez quando tiveres internet.')) { _resetEnvio(); return; }
   }
 
   // Fechar sessão final do cronómetro (se ainda houver alguma em curso)
@@ -4106,6 +4140,7 @@ async function enviarRelatorio() {
   if (numFotos > 25) {
     if (!confirm(`⚠️ Vai gerar relatório com ${numFotos} fotos.\n\nIsto pode demorar e há risco de a app travar com tantas fotos.\n\nO rascunho já foi guardado — se algo correr mal, pode retomar.\n\nContinuar?`)) {
       mostrarToast('Envio cancelado. Rascunho guardado.');
+      _resetEnvio();
       return;
     }
     mostrarToast('🔄 A gerar relatório... pode demorar.');
@@ -4129,6 +4164,7 @@ async function enviarRelatorio() {
   // MODO REVISÃO (Sónia no portatil → reencaminhar Aernnova)
   // ============================================
   if (isModoRevisao) {
+    _resetEnvio();
     return await enviarRelatorioModoRevisao(blob, file, fileName, d);
   }
 
@@ -4163,89 +4199,67 @@ ${d.operadorEmbaresa}
 Embaresa PT — Embalamento
 `;
 
-  // Tentar Web Share API com ficheiro (Android Chrome / iOS Safari)
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({
-        title: subject,
-        text: body,
-        files: [file]
-      });
-      mostrarSucesso('Partilha aberta. Escolha "Gmail" e clique em Enviar.');
-      const numFotosEnviadas = state.fotos.length;
-      await gravarEnviado(html, d);
-      // 🐛 BUG FIX v1.5.9: apagar rascunho com await e key explícita
-      // Antes: apagarRascunhoIDB() — sem await, sem key, podia falhar silenciosamente
-      const keyParaApagar = rascunhoActualKey;
-      if (keyParaApagar) {
-        await apagarRascunhoIDB(keyParaApagar);
-      }
-      await atualizarContadorRascunhos();
-      // Limpar fotos do estado em memória — já não precisamos
-      state.fotos = [];
-      // Mostrar instruções para apagar fotos em Downloads
-      setTimeout(() => mostrarModalLimpezaPosEnvio(d, numFotosEnviadas), 500);
-      return;
-    } catch (err) {
-      console.log('[Share] Cancelado ou erro:', err);
-    }
-  }
-
-  // Fallback: download do ficheiro + abrir mailto
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-
+  // ============================================
+  // ENVIAR PELA NUVEM (servidor) — fiavel, com as fotos no anexo, sem descarregar, uma so vez
+  // ============================================
   const destEmail = d.emailCliente || getConfigEmailDestino();
-  const mailto = construirMailto(destEmail, subject, body + '\n[Anexar o ficheiro descarregado: ' + fileName + ']');
+  mostrarToast('📤 A enviar o relatório...');
+  let _r = { ok: false, filado: false };
+  try { _r = await enviarOuFilar(destEmail, subject, body, fileName, html); }
+  finally { _resetEnvio(); }
 
-  // 🐛 BUG FIX v1.5.9: capturar chave ANTES de iniciar setTimeout (estado pode mudar)
-  const keyParaApagarFallback = rascunhoActualKey;
-  const numFotosEnviadasFallback = state.fotos.length;
-
-  setTimeout(async () => {
-    window.location.href = mailto;
-    mostrarSucesso(`Ficheiro descarregado: ${fileName}\n\nNo email que abrir, anexe o ficheiro descarregado e envie.`);
+  if (_r.ok || _r.filado) {
     await gravarEnviado(html, d);
-    if (keyParaApagarFallback) {
-      await apagarRascunhoIDB(keyParaApagarFallback);
-    }
+    const keyParaApagar = rascunhoActualKey;
+    if (keyParaApagar) { await apagarRascunhoIDB(keyParaApagar); }
     await atualizarContadorRascunhos();
     state.fotos = [];
-    mostrarModalLimpezaPosEnvio(d, numFotosEnviadasFallback);
-  }, 500);
+    if (_r.ok) mostrarSucesso('✅ Relatório enviado para ' + destEmail + ' (com as fotos).\n\nNão precisas de fazer mais nada.');
+    else mostrarSucesso('💾 Sem WiFi — relatório GUARDADO.\n\nVai ser enviado sozinho para ' + destEmail + ' quando voltares à empresa (WiFi). Não precisas de fazer mais nada.');
+  } else {
+    mostrarToast('⚠️ Não consegui enviar nem guardar. Tenta de novo.');
+  }
 }
 
 // ============================================
 // ENVIO MODO REVISÃO (Sónia → Aernnova)
 // ============================================
 async function enviarRelatorioModoRevisao(blob, file, fileName, d) {
-  // 1. Descarregar o ficheiro automaticamente
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  // Pedir o email da Aernnova (fica guardado para a proxima vez)
+  const guardado = localStorage.getItem('embaresaQC_emailAernnova') || '';
+  const para = prompt('Reencaminhar à Aernnova.\n\nEmail de destino:', guardado);
+  if (!para || !para.trim()) { mostrarToast('Envio cancelado.'); return; }
+  const dest = para.trim();
+  localStorage.setItem('embaresaQC_emailAernnova', dest);
 
-  // 2. Gravar no histórico (precisamos ler o blob como texto)
-  // 🐛 BUG FIX v1.5.9: await em vez de fire-and-forget
-  try {
-    const htmlText = await blob.text();
-    await gravarEnviado(htmlText, d);
-  } catch (e) {
-    console.error('Erro a gravar histórico:', e);
+  const tagE2 = d.requerVideos ? ' [E2]' : '';
+  const subject = `Relatório Embalamento${tagE2} — ${d.numSerie} — ${d.planoNum}`;
+  const body = `Olá,
+
+Segue em anexo o relatório de embalamento referente a:
+
+Encomenda: ${d.numEncomenda}
+Nº Série: ${d.numSerie}
+Plano: ${d.planoNum} — ${d.planoNome}
+Data: ${d.dataFormatada}
+Operadores Embaresa: ${d.operadorEmbaresa} e ${d.operadorEmbaresa2}
+Colaborador Aernnova: ${d.operadorCliente}
+
+Cumprimentos,
+Sónia Santos
+Embaresa PT — Controlo de Qualidade`;
+
+  const html = await blob.text();
+  mostrarToast('📤 A enviar à Aernnova...');
+  const rA = await enviarOuFilar(dest, subject, body, fileName, html);
+  if (rA.ok || rA.filado) {
+    try { await gravarEnviado(html, d); } catch (e) {}
+    apagarRascunhoIDB();
+    if (rA.ok) mostrarSucesso('✅ Relatório enviado à Aernnova (' + dest + ') com as fotos.');
+    else mostrarSucesso('💾 Sem WiFi — guardado. Envia sozinho à Aernnova (' + dest + ') quando voltares à empresa.');
+  } else {
+    mostrarToast('⚠️ Não consegui enviar nem guardar. Tenta de novo.');
   }
-
-  // 3. Mostrar modal com info e botão para abrir email
-  mostrarModalEnvioAernnova(fileName, d);
 }
 
 function mostrarModalEnvioAernnova(fileName, d) {
@@ -6016,5 +6030,6 @@ function escapeHtml(s) {
 function escapeAttr(s) { return escapeHtml(s); }
 
 </script>
+<a href="sistema.html" title="Menu do Sistema Embaresa" style="position:fixed;left:12px;bottom:12px;z-index:2147483647;background:#0d151c;color:#26c9e2;border:1px solid #26c9e2;border-radius:20px;padding:8px 14px;font:600 13px system-ui,sans-serif;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.45)">&#8962; Menu</a>
 </body>
 </html>
