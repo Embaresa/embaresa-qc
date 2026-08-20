@@ -1189,7 +1189,7 @@ const CONFIG = {
   urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.6.8'
+  versao: '1.6.9'
 };
 // ============================================
 
@@ -1215,7 +1215,7 @@ function isTouchDevice() {
 // Modo Admin agora é por PIN, gerido em memória (window._modoAdminAtivo).
 // Não persiste em localStorage — cada sessão exige PIN novo.
 // Mantemos compatibilidade com ?admin=1 (útil para testes via browser desktop).
-function isModoAdmin() {
+function isModoAdmin() { return false; /* versao online: Modo Admin so no Sistema Embaresa (PC) */
   // Touch device nunca é admin (mesmo com ?admin=1)
   if (isTouchDevice()) return false;
   // Sessão em curso com PIN correcto
