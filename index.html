@@ -686,6 +686,7 @@
     <button class="btn btn-secondary btn-sm" onclick="abrirRelatorioExistente()">📁 Abrir HTML</button>
     <button class="btn btn-secondary btn-sm" id="btnDefinicoes" onclick="abrirDefinicoes()">⚙️ Definições</button>
     <button class="btn btn-secondary btn-sm" onclick="abrirAjuda()">❓ Ajuda</button>
+    <button class="btn btn-sm" id="btnAdmin" onclick="pedirPinAdmin()" title="Modo Admin (só neste PC)" style="display:none;background:#0d47a1;color:#fff;">🔓 Admin</button>
     <button class="btn btn-sm" id="btnInstalarPWA" style="background:linear-gradient(135deg,#28a745,#1e7e34);color:#fff;display:none;">📲 Instalar</button>
   </div>
 
@@ -700,6 +701,18 @@
       <div class="step-title">📋 Passo 1 — Identificação da Caixa</div>
       <div class="instruction">
         Selecione o plano da caixa, anote a série e o seu nome. A foto do nº de série da caixa é recomendada mas opcional.
+      </div>
+
+      <!-- Escolha do tipo de operação (antes de começar) -->
+      <div class="form-row" style="margin-bottom:8px;">
+        <div class="form-group full">
+          <label>Tipo de operação</label>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button type="button" id="btnModoEmb" onclick="setModo('embalamento')" style="flex:1; min-width:150px; padding:13px; border-radius:8px; border:2px solid #0d47a1; background:#0d47a1; color:#fff; font-weight:700; cursor:pointer; font-size:0.95rem;">📦 Embalamento</button>
+            <button type="button" id="btnModoDes" onclick="setModo('desembalamento')" style="flex:1; min-width:150px; padding:13px; border-radius:8px; border:2px solid #0d47a1; background:#fff; color:#0d47a1; font-weight:700; cursor:pointer; font-size:0.95rem;">📤 Desembalamento</button>
+          </div>
+          <div class="def-info" style="margin-top:6px;">No <strong>desembalamento</strong> a sequência é: Identificação → Fotos → Checklist → Assinaturas → Envio. As fotos são <strong>livres, sem ordem</strong>.</div>
+        </div>
       </div>
 
       <div class="form-row">
@@ -816,10 +829,10 @@
   <!-- ===== PASSO 2: ESTADO INICIAL ===== -->
   <div class="wizard-step" id="step2" data-step="2">
     <div class="step-card">
-      <div class="step-title">🔍 Passo 2 — Estado Inicial</div>
+      <div class="step-title" id="tituloStep2">🔍 Passo 2 — Estado Inicial</div>
 
       <!-- Caixa de instruções pedagógicas -->
-      <div class="photo-guide">
+      <div class="photo-guide modo-emb">
         <div class="photo-guide-title">📋 Fotos a tirar neste passo (mínimo 4):</div>
         <ul class="photo-guide-list">
           <li><strong>2 fotos da caixa vazia:</strong> uma de frente, outra lateral</li>
@@ -828,7 +841,7 @@
         <div class="photo-counter" id="counter_step2">📊 Tiradas: 0 de 4 obrigatórias</div>
       </div>
 
-      <div class="photo-step-block">
+      <div class="photo-step-block modo-emb">
         <div class="photo-step-label">📸 Caixa vazia (frente + lateral) — mínimo 2 fotos</div>
         <div class="upload-row">
           <button class="btn-capture" id="btnFoto_caixaVazia" onclick="capturarFoto('caixaVazia')">📷 Tirar Foto</button>
@@ -836,12 +849,28 @@
         <div class="photos-grid" id="photosGrid_caixaVazia"></div>
       </div>
 
-      <div class="photo-step-block">
+      <div class="photo-step-block modo-emb">
         <div class="photo-step-label">📸 Peça aeronáutica antes de embalar — mínimo 2 fotos</div>
         <div class="upload-row">
           <button class="btn-capture" id="btnFoto_pecaInicial" onclick="capturarFoto('pecaInicial')">📷 Tirar Foto</button>
         </div>
         <div class="photos-grid" id="photosGrid_pecaInicial"></div>
+      </div>
+
+      <!-- DESEMBALAMENTO: fotos livres, sem ordem -->
+      <div class="photo-guide modo-des" style="display:none;">
+        <div class="photo-guide-title">📋 Fotos do desembalamento:</div>
+        <ul class="photo-guide-list">
+          <li>Tire <strong>todas as fotos necessárias</strong>, <strong>sem ordem</strong>, do estado da peça ao desembalar.</li>
+        </ul>
+        <div class="photo-counter" id="counter_step2_des">📸 Fotos: 0</div>
+      </div>
+      <div class="photo-step-block modo-des" style="display:none;">
+        <div class="photo-step-label">📸 Fotos do desembalamento (à vontade, sem ordem)</div>
+        <div class="upload-row">
+          <button class="btn-capture" id="btnFoto_desembalagem" onclick="capturarFoto('desembalagem')">📷 Tirar Foto</button>
+        </div>
+        <div class="photos-grid" id="photosGrid_desembalagem"></div>
       </div>
 
       <!-- Vídeo Fase 1 (opcional, só se requerVideos) -->
@@ -1189,7 +1218,7 @@ const CONFIG = {
   urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.6.9'
+  versao: '1.7.0'
 };
 // ============================================
 
@@ -1287,9 +1316,19 @@ function aplicarModoVisibilidade() {
     });
   });
 
-  // Esconder a secção "Activar Modo Admin" da Ajuda no telemóvel
+  // Admin só aparece no PC local (Sistema Embaresa), nunca online nem em táctil
+  const h = location.hostname;
+  const localPC = /^(localhost|127\.0\.0\.1|\[::1\]|)$/.test(h) || location.protocol === 'file:';
+  const mostraAdmin = localPC && !touch;
+  const btnAdmin = document.getElementById('btnAdmin');
+  if (btnAdmin) {
+    btnAdmin.style.display = mostraAdmin ? '' : 'none';
+    btnAdmin.textContent = admin ? '🔓 Admin ✓' : '🔓 Admin';
+    btnAdmin.style.background = admin ? '#2e7d32' : '#0d47a1';
+  }
+  // Secção "Activar Modo Admin" da Ajuda: só no PC local
   const seccaoAdminAjuda = document.getElementById('seccaoAdminAjuda');
-  if (seccaoAdminAjuda) seccaoAdminAjuda.style.display = touch ? 'none' : '';
+  if (seccaoAdminAjuda) seccaoAdminAjuda.style.display = mostraAdmin ? '' : 'none';
   // Marcar body para CSS opcional
   document.body.dataset.modo = admin ? 'admin' : 'operador';
 
@@ -1853,17 +1892,24 @@ const state = {
   //   numSessoes, inicio, fim, assinaturas{}, enviadoEm }
   turnos: [],
   currentStep: 1,
+  modo: 'embalamento',  // 'embalamento' (default) | 'desembalamento' (passos 1,2,6,7,8; passo 2 = fotos livres)
   _modoEnvio: 'final'  // 'parcial' quando enviado por pausa; 'final' (default) para envio normal
 };
 
 const TOTAL_STEPS = 8;
 const STEP_LABELS = ['Identificação', 'Estado Inicial', 'Protecção', 'Posicionamento', 'Embalagem Final', 'Checklist', 'Assinaturas', 'Envio'];
+// Sequência de passos conforme o modo. Desembalamento salta 3,4,5 (protecção/posicionamento/embalagem final).
+function passosDoModo(){ return state.modo === 'desembalamento' ? [1,2,6,7,8] : [1,2,3,4,5,6,7,8]; }
+function proximoPassoNum(n){ const s=passosDoModo(); const i=s.indexOf(n); return (i>=0 && i<s.length-1) ? s[i+1] : null; }
+function anteriorPassoNum(n){ const s=passosDoModo(); const i=s.indexOf(n); return (i>0) ? s[i-1] : null; }
 const PHOTO_STEPS = {
   // Passo 1
   serie: { label: 'Nº Série da caixa (recomendada)', step: 1, required: 0 },
   // Passo 2 — Estado Inicial (4 fotos: 2 caixa vazia + 2 peça)
   caixaVazia: { label: 'Caixa vazia (frente + lateral)', step: 2, required: 2 },
   pecaInicial: { label: 'Peça aeronáutica antes de embalar', step: 2, required: 2 },
+  // Passo 2 — DESEMBALAMENTO: fotos livres, sem ordem
+  desembalagem: { label: 'Fotos do desembalamento', step: 2, required: 0 },
   // Passo 3 — Protecção (4 fotos: 2 bolha+dessec + 2 alumínio)
   bolha: { label: 'Bolha + dessecantes', step: 3, required: 2 },
   aluminio: { label: 'Saco alumínio aplicado', step: 3, required: 2 },
@@ -1956,7 +2002,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // PWA — SERVICE WORKER, OFFLINE, INSTALL
 // ============================================
 function registarServiceWorker() {
-  if ('serviceWorker' in navigator) { /* standalone online: cache offline (cliente sem WiFi) */
+  if ('serviceWorker' in navigator) { /* versao online: cache offline (cliente sem WiFi) */
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' })
         .then(reg => {
@@ -2025,13 +2071,14 @@ function configurarBotaoInstalar() {
 function renderProgressBar() {
   const bar = document.getElementById('wizardProgress');
   if (!bar) return;
-  bar.innerHTML = STEP_LABELS.map((label, i) => {
-    const num = i + 1;
+  const seq = passosDoModo();
+  const posAtual = seq.indexOf(state.currentStep);
+  bar.innerHTML = seq.map((num, pos) => {
     const isActive = num === state.currentStep;
-    const isDone = num < state.currentStep;
+    const isDone = pos < posAtual;
     return `<div class="progress-step ${isActive ? 'active' : ''} ${isDone ? 'done' : ''}" onclick="goToStep(${num})">
-      <span class="num">${isDone ? '✓' : num}</span>
-      <span class="lbl">${label}</span>
+      <span class="num">${isDone ? '✓' : (pos + 1)}</span>
+      <span class="lbl">${STEP_LABELS[num - 1]}</span>
     </div>`;
   }).join('');
 }
@@ -2049,7 +2096,7 @@ function showStep(n) {
   const btnAvancar = document.getElementById('btnAvancar');
   const btnEnviar = document.getElementById('btnEnviar');
   const indicator = document.getElementById('stepIndicator');
-  btnVoltar.disabled = (n === 1);
+  btnVoltar.disabled = (anteriorPassoNum(n) === null);
   if (n === TOTAL_STEPS) {
     btnAvancar.style.display = 'none';
     btnEnviar.style.display = 'inline-block';
@@ -2079,7 +2126,8 @@ function showStep(n) {
     btnEnviar.onclick = enviarRelatorio;
   }
 
-  indicator.textContent = `Passo ${n} de ${TOTAL_STEPS} — ${STEP_LABELS[n-1]}`;
+  const _seqInd = passosDoModo();
+  indicator.textContent = `Passo ${_seqInd.indexOf(n) + 1} de ${_seqInd.length} — ${STEP_LABELS[n-1]}`;
 
   // Actualizar visibilidade do botão Pausar/Retomar
   if (typeof actualizarBotaoPausar === 'function') actualizarBotaoPausar();
@@ -2098,16 +2146,38 @@ function showStep(n) {
 
 function nextStep() {
   if (!validarPasso(state.currentStep)) return;
-  if (state.currentStep < TOTAL_STEPS) showStep(state.currentStep + 1);
+  const prox = proximoPassoNum(state.currentStep);
+  if (prox) showStep(prox);
 }
 
 function prevStep() {
-  if (state.currentStep > 1) showStep(state.currentStep - 1);
+  const ant = anteriorPassoNum(state.currentStep);
+  if (ant) showStep(ant);
 }
 
 function goToStep(n) {
-  // Permitir saltar para passos já visitados ou o seguinte
-  if (n <= state.currentStep + 1) showStep(n);
+  // Permitir saltar para passos já visitados ou o seguinte (na sequência do modo)
+  const seq = passosDoModo();
+  const posAlvo = seq.indexOf(n), posAtual = seq.indexOf(state.currentStep);
+  if (posAlvo === -1) return;
+  if (posAlvo <= posAtual + 1) showStep(n);
+}
+
+// Escolher Embalamento / Desembalamento (no Passo 1, antes de começar)
+function setModo(m) {
+  state.modo = (m === 'desembalamento') ? 'desembalamento' : 'embalamento';
+  const des = state.modo === 'desembalamento';
+  const bE = document.getElementById('btnModoEmb'), bD = document.getElementById('btnModoDes');
+  if (bE) { bE.style.background = des ? '#fff' : '#0d47a1'; bE.style.color = des ? '#0d47a1' : '#fff'; }
+  if (bD) { bD.style.background = des ? '#0d47a1' : '#fff'; bD.style.color = des ? '#fff' : '#0d47a1'; }
+  // Passo 2: alternar blocos ordenados (embalamento) vs bloco livre (desembalamento)
+  document.querySelectorAll('.modo-emb').forEach(el => el.style.display = des ? 'none' : '');
+  document.querySelectorAll('.modo-des').forEach(el => el.style.display = des ? '' : 'none');
+  const t2 = document.getElementById('tituloStep2');
+  if (t2) t2.textContent = des ? '📤 Passo 2 — Fotos do Desembalamento' : '🔍 Passo 2 — Estado Inicial';
+  renderProgressBar();
+  if (typeof atualizarContadorPasso === 'function') atualizarContadorPasso(2);
+  if (typeof autoSave === 'function') autoSave(false);
 }
 
 function validarPasso(n) {
@@ -2125,10 +2195,15 @@ function validarPasso(n) {
       }
       break;
     case 2:
-      // 4 fotos mínimas: 2 caixa vazia + 2 peça inicial
-      if (countFotos('caixaVazia') < 2) erros.push('Tire pelo menos 2 fotos da caixa vazia (frente + lateral).');
-      if (countFotos('pecaInicial') < 2) erros.push('Tire pelo menos 2 fotos da peça aeronáutica antes de embalar.');
-      if (d.requerVideos && !state.videosE2.inicio.gravado) erros.push('Grave o vídeo da Fase 1 (Início).');
+      if (state.modo === 'desembalamento') {
+        // Desembalamento: fotos livres, sem ordem — mínimo 1
+        if (countFotos('desembalagem') < 1) erros.push('Tire pelo menos 1 foto do desembalamento.');
+      } else {
+        // Embalamento: 4 fotos mínimas: 2 caixa vazia + 2 peça inicial
+        if (countFotos('caixaVazia') < 2) erros.push('Tire pelo menos 2 fotos da caixa vazia (frente + lateral).');
+        if (countFotos('pecaInicial') < 2) erros.push('Tire pelo menos 2 fotos da peça aeronáutica antes de embalar.');
+        if (d.requerVideos && !state.videosE2.inicio.gravado) erros.push('Grave o vídeo da Fase 1 (Início).');
+      }
       break;
     case 3:
       // 4 fotos mínimas: 2 bolha+dessec + 2 alumínio
@@ -3249,6 +3324,11 @@ function atualizarContadorPasso(passoNum) {
     }
   });
 
+  if (passoNum === 2) {
+    const cDes = document.getElementById('counter_step2_des');
+    if (cDes) cDes.textContent = '📸 Fotos: ' + state.fotos.filter(f => f.step === 'desembalagem').length;
+  }
+
   if (total >= min && min > 0) {
     counter.classList.add('complete');
     counter.textContent = `Tiradas: ${total} de ${min} obrigatórias`;
@@ -3799,7 +3879,7 @@ function gerarRelatorioHTML() {
 <html lang="pt">
 <head>
 <meta charset="UTF-8">
-<title>Relatório de Embalamento — ${d.numSerie} — ${d.planoNum}</title>
+<title>Relatório de ${state.modo === 'desembalamento' ? 'Desembalamento' : 'Embalamento'} — ${d.numSerie} — ${d.planoNum}</title>
 <style>
   body { font-family: Arial, Helvetica, sans-serif; color: #1a1a2e; max-width: 900px; margin: 20px auto; padding: 20px; line-height: 1.4; }
   h1 { font-size: 1.4rem; text-align: center; margin: 0 0 4px; border-bottom: 3px solid #00d4ff; padding-bottom: 10px; }
@@ -3864,7 +3944,7 @@ function gerarRelatorioHTML() {
       ${haTurnosAnteriores() ? `<br>Turnos anteriores desta caixa: ${normalizarTurnos().map(t => `<strong>Turno ${t.numero}</strong> (${escapeHtml(t.operador1 || '—')} / ${escapeHtml(t.operador2 || '—')})`).join(', ')}.` : ''}
     </div>
   </div>` : ''}
-  <h1>📦 Relatório de Embalamento${state._modoEnvio === 'parcial' ? ' <span style="color:#e65100;font-size:0.7em;">[PARCIAL]</span>' : ''}${porTurno ? ` <span style="color:#3f51b5;font-size:0.7em;">[TURNO ${nTurno}${ehTurnoIntermedio ? '' : ' — FINAL'}]</span>` : ''}</h1>
+  <h1>📦 Relatório de ${state.modo === 'desembalamento' ? 'Desembalamento' : 'Embalamento'}${state._modoEnvio === 'parcial' ? ' <span style="color:#e65100;font-size:0.7em;">[PARCIAL]</span>' : ''}${porTurno ? ` <span style="color:#3f51b5;font-size:0.7em;">[TURNO ${nTurno}${ehTurnoIntermedio ? '' : ' — FINAL'}]</span>` : ''}</h1>
   <div class="rep-header">Embaresa PT — Controlo de Qualidade • ${d.dataFormatada}</div>
 
   <h2>1. Identificação</h2>
@@ -4975,6 +5055,7 @@ function recolherEstadoCompleto() {
     versao: CONFIG.versao,
     timestamp: Date.now(),
     currentStep: state.currentStep,
+    modo: state.modo,
     formData: {
       planoNum: v('planoNum'),
       cliente: v('cliente'),
@@ -5517,6 +5598,7 @@ async function limparEstadoParaNovo() {
   state.signatures = {};
   state.cronometro = { sessoes: [], emPausa: false };
   state.currentStep = 1;
+  state.modo = 'embalamento';
   state._modoEnvio = 'final';
   // v1.6.1 — caixa nova: sem turnos anteriores
   state.turnos = [];
@@ -5527,6 +5609,7 @@ async function limparEstadoParaNovo() {
   if (typeof pararLiveTimer === 'function') pararLiveTimer();
   // Limpar UI das fotos por passo
   renderTodasFotos();
+  if (typeof setModo === 'function') setModo('embalamento');
   renderVideosE2();
   document.querySelectorAll('.check-options button').forEach(b => b.classList.remove('sel-ok','sel-nok','sel-na'));
   limparAssinatura('sigEmbaresa');
@@ -5775,6 +5858,8 @@ async function aplicarRascunho(r) {
   });
   if (typeof renderVideosE2 === 'function') renderVideosE2();
   renderTodasFotos();
+  state.modo = r.modo || 'embalamento';
+  if (typeof setModo === 'function') setModo(state.modo);
   [2,3,4,5].forEach(p => atualizarContadorPasso(p));
   if (r.currentStep && r.currentStep > 1) {
     showStep(r.currentStep);
