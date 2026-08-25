@@ -1218,7 +1218,7 @@ const CONFIG = {
   urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.7.0'
+  versao: '1.7.1'
 };
 // ============================================
 
@@ -6195,15 +6195,29 @@ async function reabrirRelatorioEnviado(key) {
       req.onsuccess = () => resolve(req.result);
     });
     if (!r || !r.html) {
-      alert('Não foi possível recuperar este relatório.');
+      alert('Este relatório já não tem o ficheiro guardado (só os mais recentes guardam o HTML com as fotos). Não é possível reenviar nem descarregar.');
       return;
     }
-    // Descarregar o HTML
-    const blob = new Blob([r.html], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
     const dataFile = new Date(r.dataEnvio).toISOString().split('T')[0];
     const snFile = (r.numSerie || 'sem').replace(/\s+/g,'-').replace(/[^a-zA-Z0-9-]/g,'');
     const fileName = `Relatorio_${snFile}_${(r.planoNum || '').replace(/\s+/g,'_')}_${dataFile}.html`;
+    const dest = getConfigEmailDestino();
+    // Opção principal: REENVIAR por email (nuvem, com as fotos). Cancelar = só descarregar.
+    if (confirm(`Reenviar este relatório por email?\n\nPara: ${dest}\n(com as fotos anexadas)\n\nOK = Reenviar por email\nCancelar = só descarregar o ficheiro`)) {
+      mostrarToast('📤 A reenviar por email...');
+      const assunto = `Relatório Embalamento — ${r.numSerie || ''} — ${r.planoNum || ''}`;
+      const corpo = `Reenvio do relatório de embalamento.\n\nNº Série: ${r.numSerie || ''}\nPlano: ${r.planoNum || ''}${r.planoNome ? ' — ' + r.planoNome : ''}\nEncomenda: ${r.numEncomenda || ''}\nOperador: ${r.operadorEmbaresa || ''}\n\nEmbaresa PT — Embalamento`;
+      const ok = await enviarViaFluxo(dest, assunto, corpo, fileName, r.html);
+      if (ok) {
+        document.getElementById('modalHistorico')?.remove();
+        mostrarSucesso('✅ Relatório reenviado por email para ' + dest + ' (com as fotos).');
+        return;
+      }
+      alert('Não consegui reenviar pela nuvem (sem rede?). Vou descarregar o ficheiro para poderes anexar manualmente a um email.');
+    }
+    // Descarregar (escolha do utilizador ou fallback se a nuvem falhou)
+    const blob = new Blob([r.html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = fileName;
