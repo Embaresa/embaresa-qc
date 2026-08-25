@@ -1,6 +1,6 @@
 // Embaresa QC — Service Worker
 // Versão: incrementar quando publicar nova versão para forçar update no telemóvel/tablet
-const CACHE_VERSION = 'embaresa-qc-v1-7-2';
+const CACHE_VERSION = 'embaresa-qc-v1-7-3';
 const ASSETS = [
   './',
   './index.html',
@@ -27,7 +27,10 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: cache-first para assets locais; network-first para tudo o resto
+// Fetch:
+//  - HTML/navegacao (index.html): NETWORK-FIRST — tenta sempre a versao fresca do servidor,
+//    e so cai na cache quando esta offline. Assim uma versao nova pega logo (nao fica presa em cache).
+//  - Restantes recursos locais (icones, manifest): cache-first (rapido; mudam com o bump da versao).
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   const isOwnOrigin = url.origin === self.location.origin;
@@ -37,21 +40,36 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const isHTML = event.request.mode === 'navigate' ||
+    url.pathname.endsWith('/') || url.pathname.endsWith('/index.html');
+
+  if (isHTML) {
+    // NETWORK-FIRST
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response && response.status === 200 && response.type === 'basic') {
+          const clone = response.clone();
+          caches.open(CACHE_VERSION).then((cache) => cache.put('./index.html', clone));
+        }
+        return response;
+      }).catch(() =>
+        // Sem rede — servir a ultima versao em cache
+        caches.match(event.request).then((c) => c || caches.match('./index.html'))
+      )
+    );
+    return;
+  }
+
+  // CACHE-FIRST para o resto
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
       return fetch(event.request).then((response) => {
-        // Cachear apenas respostas validas
         if (response && response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
           caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, clone));
         }
         return response;
-      }).catch(() => {
-        // Sem rede — devolver index.html como fallback para navegacao
-        if (event.request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
       });
     })
   );
