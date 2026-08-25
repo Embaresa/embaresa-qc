@@ -1209,16 +1209,18 @@ const CONFIG = {
   // Se configurado, aparece botão "🔄 Buscar Vídeo Recente" nos campos E2
   powerAutomateEndpoint: '',  // Ex: 'https://prod-XX.westeurope.logic.azure.com:443/workflows/...'
 
-  // Endpoint Power Automate "URL_CONFIG" — lê ConfigColaboradores do Excel
-  // É o MESMO fluxo da app Produção (acao: 'lerConfigs')
-  urlConfigPowerAutomate: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/464482ea19714e50b858771991c0539d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=H29XBCpPy1dyMk7Gyj6LAWy8RKI8Q4mpUFdI5qanNKU',
+  // Endpoint Power Automate — lê os colaboradores do Excel (folha ConfigColaboradores).
+  // 2026-08-25: mudámos do fluxo próprio 464482ea (estava em baixo, 502 persistente) para o
+  // fluxo de LEITURA da app Produção/Supervisor (5da3828d), que é saudável e devolve {colaboradores:[...]}.
+  // Nota: este fluxo devolve Ativo como string "True"/"False" — o filtro abaixo já trata disso.
+  urlConfigPowerAutomate: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/16/workflows/5da3828d37564c2ba8af16ca06e2b7e0/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=NRb520YI7wcDJjMufAfUzrlYIQSQ3ub6dl1KrQ3_FxI',
 
   // Endpoint Power Automate — envia o relatorio por email PELO SERVIDOR (anexo com fotos).
   // Resolve os 3 problemas: enche o telemovel / emails duplicados / emails sem fotos.
   urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.7.1'
+  versao: '1.7.2'
 };
 // ============================================
 
@@ -1464,13 +1466,15 @@ async function carregarColaboradoresFromPowerAutomate(forcar) {
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const dados = await resp.json();
 
-    // O fluxo devolve array plano — extrair colaboradores activos
+    // Ativo pode vir como booleano true, ou string "Sim"/"True"/"Verdadeiro"/"1" (depende do fluxo)
+    const isAtivo = i => i.Ativo === true || ['sim','true','verdadeiro','1'].includes(String(i.Ativo || '').toLowerCase());
+
+    // O fluxo pode devolver um array plano OU um objeto { colaboradores: [...] }
     let colaboradores = [];
     if (Array.isArray(dados)) {
       colaboradores = dados.filter(i => {
         if (!i.Nome || !i.Turno) return false;
-        const ativo = String(i.Ativo || '').toLowerCase() === 'sim' || i.Ativo === true;
-        if (ativo) return true;
+        if (isAtivo(i)) return true;
         // Não activo — verificar se data de saída ainda não chegou
         const ds = i.DataSaida || i.dataSaida || '';
         if (!ds) return false;
@@ -1479,10 +1483,7 @@ async function carregarColaboradoresFromPowerAutomate(forcar) {
         return hoje < dataSaida;
       });
     } else if (dados.colaboradores && Array.isArray(dados.colaboradores)) {
-      colaboradores = dados.colaboradores.filter(i => {
-        const ativo = String(i.Ativo || '').toLowerCase() === 'sim' || i.Ativo === true;
-        return ativo;
-      });
+      colaboradores = dados.colaboradores.filter(i => i.Nome && isAtivo(i));
     }
 
     // Extrair só o nome e ordenar
@@ -1940,9 +1941,10 @@ document.addEventListener('DOMContentLoaded', () => {
   repopularDropdownClientes();
 
   // Sincronizar colaboradores com o Excel via Power Automate (não bloqueia, faz em background)
+  // forcar=true → busca sempre a lista fresca ao abrir (colaboradores novos aparecem logo); se offline, cai na cache.
   setTimeout(() => {
-    sincronizarColaboradoresComExcel(false).then(ok => {
-      if (ok) console.log('[Config] Colaboradores sincronizados com sucesso.');
+    sincronizarColaboradoresComExcel(true).then(ok => {
+      if (ok) console.log('[Config] Colaboradores sincronizados (lista fresca).');
     });
   }, 2000);
 
