@@ -682,6 +682,7 @@
   <div class="top-bar">
     <button class="btn btn-secondary btn-sm" onclick="novoRelatorio()">🔄 Novo</button>
     <button class="btn btn-secondary btn-sm" onclick="abrirListaRascunhos()">📂 Rascunhos <span id="contadorRascunhos" style="background:#ff9800;color:white;border-radius:10px;padding:1px 6px;font-size:0.75rem;font-weight:bold;display:none;margin-left:3px;">0</span></button>
+    <button class="btn btn-secondary btn-sm" id="btnPorEnviar" onclick="abrirFilaPorEnviar()" style="display:none;">📤 Por enviar <span id="contadorPorEnviar" style="background:#dc3545;color:white;border-radius:10px;padding:1px 6px;font-size:0.75rem;font-weight:bold;margin-left:3px;">0</span></button>
     <button class="btn btn-secondary btn-sm" onclick="abrirHistoricoEnviados()">📚 Enviados</button>
     <button class="btn btn-secondary btn-sm" onclick="abrirRelatorioExistente()">📁 Abrir HTML</button>
     <button class="btn btn-secondary btn-sm" id="btnDefinicoes" onclick="abrirDefinicoes()">⚙️ Definições</button>
@@ -1220,7 +1221,7 @@ const CONFIG = {
   urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.7.3'
+  versao: '1.7.5'
 };
 // ============================================
 
@@ -1413,6 +1414,25 @@ function getConfigEmailDestino() {
     }
   } catch (e) {}
   return CONFIG.emailDestino;
+}
+
+// 🐛 BUG FIX v1.7.4 — o campo "Destinatário" aceitava qualquer texto.
+// Alguém escreveu "@soniasantos" (à espera de uma menção) e o Office 365
+// rejeitou o envio no flow "Enviar Relatorio QC": o relatório ficou preso
+// no histórico do Power Automate e nunca chegou à Sónia.
+function emailValido(e) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(e || '').trim());
+}
+
+// Rede de segurança dos 3 caminhos de envio (final, turno, parcial):
+// se o destino não for um email a sério, usa o da configuração em vez de
+// mandar lixo para o flow. Protege também o Modo Admin, que salta a validação.
+function destinoSeguro(e) {
+  const v = String(e || '').trim();
+  if (emailValido(v)) return v;
+  const fallback = getConfigEmailDestino();
+  if (v) console.warn('[QC] Destino inválido ("' + v + '") — a usar ' + fallback);
+  return fallback;
 }
 
 // v1.6.0 — cópia de cada foto para a pasta Downloads.
@@ -1998,6 +2018,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setTimeout(limpezaAutomaticaArranque, 3000);
   // Inicializar contador de rascunhos no top-bar
   setTimeout(atualizarContadorRascunhos, 1000);
+  setTimeout(atualizarContadorPorEnviar, 1200);
 });
 
 // ============================================
@@ -2721,7 +2742,7 @@ ${d.operadorEmbaresa}
 Embaresa PT — Embalamento
 `;
 
-  const destTurno = d.emailCliente || getConfigEmailDestino();
+  const destTurno = destinoSeguro(d.emailCliente);
   mostrarToast('📤 A enviar o relatório de turno...');
   const rT = await enviarOuFilar(destTurno, subject, body, fileName, html);
   if (!rT.ok && !rT.filado) { mostrarToast('⚠️ Não consegui enviar nem guardar o turno. Tenta de novo — o turno NÃO foi fechado.'); return; }
@@ -2958,7 +2979,7 @@ Embaresa PT — Embalamento
 `;
 
     // Enviar pela nuvem (servidor); se offline, fica na fila e envia quando a WiFi voltar
-    const destParcial = d.emailCliente || getConfigEmailDestino();
+    const destParcial = destinoSeguro(d.emailCliente);
     const rP = await enviarOuFilar(destParcial, subject, body, fileName, html);
     if (rP.ok) { mostrarToast('⏸️ Pausa registada. Relatório parcial enviado para ' + destParcial + '.'); }
     else if (rP.filado) { mostrarToast('⏸️ Pausa registada. Parcial guardado — envia sozinho quando voltares à empresa.'); }
@@ -4284,6 +4305,7 @@ async function enviarOuFilar(para, assunto, corpo, nomeFicheiro, html) {
   if (ok) return { ok: true, filado: false };
   try {
     await _filaAdd({ id: 'q_' + Date.now() + '_' + Math.floor(Math.random() * 1000), para, assunto, corpo, nomeFicheiro, html, criadoEm: new Date().toISOString() });
+    await atualizarContadorPorEnviar();
     return { ok: false, filado: true };
   } catch (e) { console.error('[Fila] falha a guardar:', e); return { ok: false, filado: false }; }
 }
@@ -4297,8 +4319,80 @@ async function processarFilaEnvio() {
     for (const it of itens) { const ok = await enviarViaFluxo(it.para, it.assunto, it.corpo, it.nomeFicheiro, it.html); if (ok) { await _filaDel(it.id); n++; } }
     if (n > 0 && typeof mostrarToast === 'function') mostrarToast('✅ ' + n + ' relatório(s) guardado(s) foram enviados (WiFi de volta).');
   } catch (e) { console.warn('[Fila] erro a processar:', e); }
-  finally { _aProcessarFila = false; }
+  finally { _aProcessarFila = false; await atualizarContadorPorEnviar(); }
 }
+// v1.7.5 — a fila era invisivel: um relatorio que falhasse a sair ficava a
+// retentar de 60 em 60s sem ninguem saber. Agora conta-se no top-bar.
+async function atualizarContadorPorEnviar() {
+  try {
+    const btn = document.getElementById('btnPorEnviar');
+    const cont = document.getElementById('contadorPorEnviar');
+    if (!btn || !cont) return;
+    const n = (await _filaLista()).length;
+    if (n > 0) { btn.style.display = 'inline-block'; cont.textContent = n; }
+    else { btn.style.display = 'none'; }
+  } catch (e) {}
+}
+
+async function abrirFilaPorEnviar() {
+  const itens = await _filaLista();
+  let modal = document.getElementById('modalPorEnviar');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'modalPorEnviar';
+  modal.className = 'modal-overlay active';
+
+  if (itens.length === 0) {
+    modal.innerHTML = `
+      <div class="modal-card" style="max-width:520px;">
+        <h3 style="margin-top:0;color:#1a1a2e;">📤 Relatórios por enviar</h3>
+        <p style="text-align:center;color:#888;padding:20px;">Está tudo enviado. Nada em espera.</p>
+        <div style="text-align:right;">
+          <button class="btn btn-secondary" onclick="document.getElementById('modalPorEnviar').remove()">Fechar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    return;
+  }
+
+  itens.sort((a, b) => new Date(a.criadoEm || 0) - new Date(b.criadoEm || 0));
+  const linhas = itens.map(i => {
+    const quando = i.criadoEm ? new Date(i.criadoEm).toLocaleString('pt-PT') : '—';
+    const tamanhoMB = i.html ? (i.html.length / 1048576).toFixed(1) : '?';
+    return `
+      <div style="padding:10px 12px;border:1px solid #ffcdd2;background:#fff5f5;border-radius:8px;margin-bottom:8px;">
+        <div style="font-weight:600;font-size:0.9rem;word-break:break-all;">${i.nomeFicheiro || 'Relatorio.html'}</div>
+        <div style="font-size:0.8rem;color:#666;margin-top:3px;">Para: ${i.para || '—'} • ${quando} • ${tamanhoMB} MB</div>
+      </div>`;
+  }).join('');
+
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:520px;">
+      <h3 style="margin-top:0;color:#1a1a2e;">📤 Relatórios por enviar (${itens.length})</h3>
+      <p style="font-size:0.85rem;color:#666;margin-top:0;">
+        Guardados no aparelho. A app tenta enviá-los sozinha de minuto a minuto —
+        não é preciso fazer nada. Só desaparecem daqui quando saírem mesmo.
+      </p>
+      <div style="max-height:50vh;overflow-y:auto;margin:12px 0;">${linhas}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="document.getElementById('modalPorEnviar').remove()">Fechar</button>
+        <button class="btn" style="background:#0d47a1;color:#fff;" onclick="tentarEnviarFilaAgora()">📤 Tentar agora</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function tentarEnviarFilaAgora() {
+  if (!navigator.onLine) { mostrarToast('⚠️ Sem internet. Tenta quando tiveres rede.'); return; }
+  mostrarToast('📤 A tentar enviar...');
+  await processarFilaEnvio();
+  const restam = (await _filaLista()).length;
+  if (restam === 0) mostrarToast('✅ Está tudo enviado.');
+  else mostrarToast('⚠️ Ainda faltam ' + restam + '. A app continua a tentar.');
+  const m = document.getElementById('modalPorEnviar');
+  if (m) { m.remove(); if (restam > 0) abrirFilaPorEnviar(); }
+}
+
 window.addEventListener('online', processarFilaEnvio);
 setInterval(processarFilaEnvio, 60000);
 setTimeout(processarFilaEnvio, 3000);
@@ -4406,7 +4500,7 @@ Embaresa PT — Embalamento
   // ============================================
   // ENVIAR PELA NUVEM (servidor) — fiavel, com as fotos no anexo, sem descarregar, uma so vez
   // ============================================
-  const destEmail = d.emailCliente || getConfigEmailDestino();
+  const destEmail = destinoSeguro(d.emailCliente);
   mostrarToast('📤 A enviar o relatório...');
   let _r = { ok: false, filado: false };
   try { _r = await enviarOuFilar(destEmail, subject, body, fileName, html); }
@@ -4562,6 +4656,14 @@ function validarBasico(soAviso) {
 
   if (!isModoRevisao && !d.emailCliente) {
     erros.push('Indique o email de destino (Sónia).');
+  } else if (!isModoRevisao && !emailValido(d.emailCliente)) {
+    // v1.7.4 — antes bastava o campo não estar vazio: "@soniasantos" passava
+    // aqui e só rebentava no flow, depois de o operador já ter ido embora.
+    erros.push('O email de destino não é válido: "' + d.emailCliente + '".\nEscreva o endereço completo (ex.: ssantos@embaresa.com).');
+  }
+
+  if (d.emailCC && !emailValido(d.emailCC)) {
+    erros.push('O email em cópia não é válido: "' + d.emailCC + '".');
   }
 
   if (erros.length > 0) {
