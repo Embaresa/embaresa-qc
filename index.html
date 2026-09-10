@@ -1221,7 +1221,7 @@ const CONFIG = {
   urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.7.5'
+  versao: '1.7.9'
 };
 // ============================================
 
@@ -1296,6 +1296,31 @@ function pedirPinAdmin() {
   } else {
     alert('❌ PIN incorrecto.');
   }
+}
+
+// v1.7.7 — Admin automático nos PCs autorizados (a Sónia: "automático no meu PC").
+// Só no PC local e sem ecrã táctil (as mesmas condições em que o botão Admin aparece).
+// O servidor local diz o nome da máquina (/api/dispositivo); a lista de PCs autorizados
+// está em qc-admin-pcs.json, ao lado do qc.html — ficheiro LOCAL, nunca publicado.
+// Online não há servidor local nem lista: não faz nada.
+async function autoAdminNestePC() {
+  try {
+    if (isTouchDevice()) return;
+    const h = location.hostname;
+    const localPC = /^(localhost|127\.0\.0\.1|\[::1\]|)$/.test(h) || location.protocol === 'file:';
+    if (!localPC || window._modoAdminAtivo === true) return;
+    const [rd, rl] = await Promise.all([
+      fetch('/api/dispositivo', { cache: 'no-store' }),
+      fetch('qc-admin-pcs.json', { cache: 'no-store' })
+    ]);
+    if (!rd.ok || !rl.ok) return;
+    const nome = String(((await rd.json()) || {}).nome || '').trim().toUpperCase();
+    const pcs = (((await rl.json()) || {}).pcs || []).map(p => String(p).trim().toUpperCase());
+    if (nome && pcs.indexOf(nome) !== -1) {
+      window._modoAdminAtivo = true;
+      aplicarModoVisibilidade();
+    }
+  } catch (e) {}
 }
 
 function desactivarModoAdmin() {
@@ -1864,8 +1889,39 @@ const PLANOS_DB = {
   "240249R0": { nome: "FRAÇÃO E1_NMF", tipo: "FRACAO", dimensoes: "12560x1910x1770" },
   "250001R0": { nome: "EMBALAGEM KC390 EH S/PL CJTO.", tipo: "EMBALAGEM", dimensoes: "11943x3148x3875" },
   "250027R0": { nome: "FRAÇÃO E1_A", tipo: "FRACAO", dimensoes: "3394x1340x567" },
-  "250221R1": { nome: "JAULA RECORTES 1600 S/PL", tipo: "EMBALAGEM", dimensoes: "" }
+  "250221R1": { nome: "JAULA RECORTES 1600 S/PL", tipo: "EMBALAGEM", dimensoes: "" },
+  // v1.7.9 — planos do catálogo que o QC nunca recebeu (KC V2 entraram a 25-08-2026).
+  // Códigos confirmados na folha Artigos do Encomendas_Embaresa.xlsx e nos PDFs da pasta Planos.
+  // Dimensões por preencher: não estão em nenhum ficheiro do sistema.
+  "240271R0": { nome: "JAULA SOBRAS 1200", tipo: "EMBALAGEM", dimensoes: "" },
+  "250283R0": { nome: "JAULA SOBRAS 1600x1200x800", tipo: "EMBALAGEM", dimensoes: "" },
+  "250317R1": { nome: "EMBALAGEM KC390 UPPER IZDA. V2", tipo: "EMBALAGEM", dimensoes: "" },
+  "250318R1": { nome: "EMBALAGEM KC390 UPPER DCHA. V2", tipo: "EMBALAGEM", dimensoes: "" },
+  "250319R1": { nome: "EMBALAGEM KC390 LOWER IZDA. V2", tipo: "EMBALAGEM", dimensoes: "" },
+  "250320R1": { nome: "EMBALAGEM KC390 LOWER DCHA. V2", tipo: "EMBALAGEM", dimensoes: "" },
+  "260118R0": { nome: "EMBALAGEM SEMI-ASA PRAETOR MARÍTIMA V2", tipo: "EMBALAGEM", dimensoes: "" }
 };
+
+// v1.7.9 — o seletor tinha 15 planos escritos à mão no HTML e esta lista tem mais de 40:
+// faltavam todas as frações, e os KC V2 nunca entraram — os operadores escolhiam o que havia
+// (a EM 2373, KC Lower Esq V2, veio com o plano do E2). O seletor passa a sair desta lista.
+function construirSeletorPlanos() {
+  const sel = document.getElementById('planoNum'); if (!sel) return;
+  const atual = sel.value;
+  const grupos = { EMBALAGEM: [], FRACAO: [] };
+  Object.keys(PLANOS_DB).sort().forEach(c => { grupos[PLANOS_DB[c].tipo === 'FRACAO' ? 'FRACAO' : 'EMBALAGEM'].push(c); });
+  const rotulo = n => String(n || '').replace(/^EMBALAGEM\s+/i, '').replace(/_(Sin cajas|S\/PL|Base con).*$/i, '').replace(/\s+S\/PL.*$/i, '').trim();
+  sel.innerHTML = '';
+  const vazio = document.createElement('option'); vazio.value = ''; vazio.textContent = '— Selecione um plano —'; sel.appendChild(vazio);
+  [['EMBALAGEM', '📦 EMBALAGENS'], ['FRACAO', '📄 FRAÇÕES']].forEach(([k, lbl]) => {
+    if (!grupos[k].length) return;
+    const g = document.createElement('optgroup'); g.label = lbl;
+    grupos[k].forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c + ' — ' + rotulo(PLANOS_DB[c].nome); g.appendChild(o); });
+    sel.appendChild(g);
+  });
+  if (atual) sel.value = atual;
+}
+construirSeletorPlanos();
 
 const CLIENTES_DB = {
   "ANN Évora Estruturas Metálicas, S.A.": { vat: "PT508622727" },
@@ -1990,6 +2046,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Catálogo local de encomendas (PO/POS por série) — para o auto-preenchimento
+  carregarEncomendasLocais();
+
   // Avisar se PWA Encomendas está disponível (só informativo)
   setTimeout(() => {
     try {
@@ -2010,6 +2069,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Aplicar modo Admin vs Operador (esconde Definições no telemóvel)
   aplicarModoVisibilidade();
+  autoAdminNestePC();   // v1.7.7 — no portátil da Sónia entra em admin sem PIN
 
   // Auto-save robusto (IndexedDB) + tentativa de recuperação
   configurarAutoSave();
@@ -2132,6 +2192,7 @@ function showStep(n) {
       btnEnviar.innerHTML = '📤 Enviar Relatório';
       btnEnviar.style.background = '';
     }
+    mostrarBotaoGravarNaPasta(isModoRevisao && !!state._ficheiroRevisao);
     atualizarResumoFinal();
   } else {
     btnAvancar.style.display = 'inline-block';
@@ -2371,10 +2432,53 @@ function onVideosToggle() {
 // ============================================
 // Tenta ler o localStorage da PWA Encomendas (mesmo domínio github.io)
 // e devolve a encomenda associada à série EM, ou null.
+// v1.7.6 — a Sonia tinha de escrever a PO a mao em TODOS os relatorios recebidos: o
+// lookup so lia o localStorage da PWA Encomendas, que no portatil (Modo Admin) esta
+// sempre vazio. Passa a ler tambem o encomendas-qc.json gerado do Encomendas_Embaresa.xlsx
+// (folhas Encomendas + EncomendasTerminadas, 3000+ series). Ficheiro LOCAL: online da 404
+// e cai no comportamento antigo, sem estragar nada.
+var ENC_LOCAL = null;          // { EM2415: {po,pos,...}, ... }
+var ENC_LOCAL_ESTADO = 'por carregar';
+function carregarEncomendasLocais() {
+  const sitios = ['../4-Aplicacao/encomendas-qc.json', 'encomendas-qc.json'];
+  let i = 0;
+  const tentar = () => {
+    if (i >= sitios.length) { ENC_LOCAL_ESTADO = 'sem ficheiro'; return; }
+    const url = sitios[i++];
+    fetch(url, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(j => {
+        const m = {};
+        (j.series || []).forEach(e => { if (e && e.serie) m[String(e.serie).toUpperCase()] = e; });
+        ENC_LOCAL = m;
+        ENC_LOCAL_ESTADO = Object.keys(m).length + ' series (' + (j.gerado || '?') + ')';
+        console.log('[Encomendas] ficheiro local: ' + ENC_LOCAL_ESTADO);
+        // o relatorio pode ja estar aberto — tentar preencher agora
+        try { tentarPreencherEncomendaAutomaticamente(); } catch (e) {}
+      })
+      .catch(() => tentar());
+  };
+  tentar();
+}
+
 function procurarEncomendaPorSerie(numSerie) {
   if (!numSerie) return null;
   // Normalizar entrada (aceitar "1301", "EM 1301", "EM1301", etc.)
   const serieNormalizada = ('EM' + numSerie.replace(/^EM\s*/i, '').trim()).toUpperCase();
+
+  // 1º: ficheiro local (portatil, Modo Admin) — e o unico que tem as terminadas
+  if (ENC_LOCAL) {
+    const f = ENC_LOCAL[serieNormalizada.replace(/\s+/g, '')];
+    if (f && f.po) {
+      return {
+        po: f.po,
+        pos: f.pos,
+        encomendaCompleta: f.po + (f.pos ? '/' + f.pos : ''),
+        caixa: f.caixa, ligacao: f.ligacao, tipologia: f.tipologia,
+        ot: f.ot, ecode: f.ecode, plano: f.plano || ''
+      };
+    }
+  }
 
   try {
     const raw = localStorage.getItem('encomendas_embaresa_v4');
@@ -3660,16 +3764,46 @@ function atualizarPreviewSerie() {
     preview.style.display = 'block';
   }
 
-  // Tentar preencher encomenda automaticamente (apenas se campo encomenda estiver vazio)
+  // Preencher a encomenda a partir do catalogo. Vazio -> preenche; diferente -> avisa
+  // (nao se sobrepoe ao que o operador escreveu, mas ela tem de ver que nao bate certo).
   const elEncomenda = document.getElementById('numEncomenda');
-  if (elEncomenda && !elEncomenda.value.trim()) {
+  if (elEncomenda) {
     const enc = procurarEncomendaPorSerie(input.value);
+    const atual = elEncomenda.value.trim();
     if (enc && enc.encomendaCompleta) {
-      elEncomenda.value = enc.encomendaCompleta;
-      elEncomenda.style.background = '#e8f5e9';
-      elEncomenda.style.borderColor = '#28a745';
-      mostrarToast('🔗 Encomenda encontrada: ' + enc.encomendaCompleta);
+      if (!atual) {
+        elEncomenda.value = enc.encomendaCompleta;
+        elEncomenda.style.background = '#e8f5e9';
+        elEncomenda.style.borderColor = '#28a745';
+        mostrarToast('🔗 Encomenda encontrada: ' + enc.encomendaCompleta);
+      } else if (atual.replace(/\s/g,'') !== enc.encomendaCompleta.replace(/\s/g,'')) {
+        elEncomenda.style.background = '#fff8e1';
+        elEncomenda.style.borderColor = '#f0ad4e';
+        elEncomenda.title = 'No ficheiro de encomendas esta série é ' + enc.encomendaCompleta;
+        mostrarToast('⚠️ A encomenda escrita (' + atual + ') não bate certo com o ficheiro: ' + enc.encomendaCompleta);
+      }
     }
+  }
+  // v1.7.9 — PLANO pela série (só no PC, com o catálogo local). Vazio -> escolhe;
+  // diferente -> fica âmbar e avisa, sem mudar o que o operador escolheu.
+  const elPlano = document.getElementById('planoNum');
+  if (elPlano && !window._aAvaliarPlano) {
+    window._aAvaliarPlano = true;
+    try {
+      const encP = procurarEncomendaPorSerie(input.value);
+      const planoCerto = encP && encP.plano;
+      elPlano.style.borderColor = ''; elPlano.style.background = ''; elPlano.title = '';
+      if (planoCerto && PLANOS_DB[planoCerto]) {
+        if (!elPlano.value) {
+          elPlano.value = planoCerto; onPlanoChange();
+          mostrarToast('📐 Plano escolhido pela série: ' + planoCerto + ' (' + (encP.caixa || '') + ')');
+        } else if (elPlano.value !== planoCerto) {
+          elPlano.style.borderColor = '#f0ad4e'; elPlano.style.background = '#fff8e1';
+          elPlano.title = 'Pela série, esta caixa é ' + (encP.caixa || '') + ' → plano ' + planoCerto;
+          mostrarToast('⚠️ Plano errado? A ' + normalizado + ' é ' + (encP.caixa || '') + ' → plano ' + planoCerto + ' (está ' + elPlano.value + ')');
+        }
+      }
+    } finally { window._aAvaliarPlano = false; }
   }
 }
 
@@ -5544,6 +5678,13 @@ function carregarDadosRelatorio(dados) {
       if (el.type === 'checkbox') {
         el.checked = !!v;
       } else {
+        // v1.7.9 — um <select> sem essa opção punha o valor em branco sem avisar: um relatório
+        // antigo com um plano que já não está na lista ficava "sem plano" ao ser revisto.
+        if (el.tagName === 'SELECT' && v !== '' && ![...el.options].some(o => o.value === String(v))) {
+          const o = document.createElement('option');
+          o.value = String(v); o.textContent = String(v) + ' — (não está na lista de planos)';
+          el.appendChild(o);
+        }
         el.value = v;
       }
     });
@@ -5613,7 +5754,151 @@ function carregarDadosRelatorio(dados) {
   }, 200);
 }
 
+// v1.7.6 — depois de rever, gravar o relatorio POR CIMA do que esta na pasta
+// "Relatorios Embalamento ANN - Relatorios digital". O browser sozinho nao escreve
+// numa pasta do disco: passa pelo servidor local (POST /api/qc-relatorio).
+function mostrarBotaoGravarNaPasta(mostrar) {
+  let b = document.getElementById('btnGravarPasta');
+  if (!mostrar) { if (b) b.style.display = 'none'; return; }
+  if (!b) {
+    const btnEnviar = document.getElementById('btnEnviar');
+    if (!btnEnviar || !btnEnviar.parentNode) return;
+    b = document.createElement('button');
+    b.id = 'btnGravarPasta';
+    b.className = btnEnviar.className || '';
+    b.style.cssText = 'background:linear-gradient(135deg,#0d6efd,#0a58ca);color:#fff;border:none;padding:12px 18px;border-radius:8px;font-weight:600;cursor:pointer;margin-right:8px;';
+    b.innerHTML = '💾 Gravar na pasta';
+    b.title = 'Grava por cima do ficheiro original, na pasta Relatórios digital';
+    b.onclick = gravarRelatorioNaPasta;
+    btnEnviar.parentNode.insertBefore(b, btnEnviar);
+  }
+  b.style.display = 'inline-block';
+}
+
+// Nome do relatorio revisto: o original + o nome da caixa. Ex.:
+//   Relatorio_EM-2302_220310R1_2026-09-09.html  ->  Relatorio_EM-2302_220310R1_2026-09-09_Praetor-EH.html
+// A caixa vem do catalogo de encomendas (pela serie); se nao houver, tenta a tipologia
+// e por fim o nome do plano. Se ja la estiver, nao se repete.
+function nomeRevisto(nome) {
+  const d = getDados ? getDados() : {};
+  const enc = procurarEncomendaPorSerie((d && d.numSerie) || '');
+  let caixa = (enc && (enc.caixa || enc.tipologia)) || (d && d.planoNome) || '';
+  caixa = String(caixa).trim().replace(/[\/:*?"<>|]/g, '').replace(/\s+/g, '-');
+  if (!caixa) return nome;
+  const base = nome.replace(/\.html?$/i, '');
+  if (base.toLowerCase().endsWith(caixa.toLowerCase())) return nome;   // ja tem
+  return base + '_' + caixa + '.html';
+}
+
+async function gravarRelatorioNaPasta() {
+  const nome = state._ficheiroRevisao;
+  if (!nome) { alert('Não sei em que ficheiro gravar — este relatório não foi aberto a partir da pasta.'); return; }
+  const nomeNovo = nomeRevisto(nome);
+  const b = document.getElementById('btnGravarPasta');
+  if (b) { b.disabled = true; b.innerHTML = '⏳ A preparar…'; }
+  await new Promise(r => setTimeout(r, 30));   // deixar o botao pintar: o relatorio pode ter 10 MB de fotos
+  let html = '';
+  try { state._modoEnvio = 'final'; html = gerarRelatorioHTML(); }
+  catch (e) {
+    if (b) { b.disabled = false; b.innerHTML = '💾 Gravar na pasta'; }
+    alert('Não consegui gerar o relatório:\n\n' + e.message); return;
+  }
+  if (b) { b.disabled = false; b.innerHTML = '💾 Gravar na pasta'; }
+  mostrarVersaoFinal(nome, nomeNovo, html);
+}
+
+// v1.7.8 — a Sónia: "antes de gravar o relatório mostra-me a versão final".
+// Mostra o relatorio JA GERADO e grava exatamente esse, sem o voltar a gerar:
+// o que se ve e o que fica na pasta.
+function mostrarVersaoFinal(nome, nomeNovo, html) {
+  const velho = document.getElementById('versaoFinal'); if (velho) velho.remove();
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+  const ov = document.createElement('div'); ov.id = 'versaoFinal';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99997;background:#0b1116;display:flex;flex-direction:column';
+  const barra = document.createElement('div');
+  barra.style.cssText = 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 16px;background:#fff;border-bottom:3px solid #0d6efd';
+  const info = document.createElement('div'); info.style.cssText = 'flex:1 1 320px;min-width:0';
+  info.innerHTML = '<div style="font-weight:700;font-size:16px;color:#0f172a">👁️ Versão final — confirma antes de gravar</div>' +
+    '<div style="font-family:monospace;font-size:12px;color:#334155;word-break:break-all">' + escapeHtml(nomeNovo) + '</div>' +
+    '<div style="font-size:12px;color:#64748b">Vai para a pasta <b>Revistos</b>; o original sai da pasta e vai para a reciclagem · ' +
+    (html.length / 1048576).toFixed(1) + ' MB</div>';
+  const bt = (id, txt, bg, fn) => { const x = document.createElement('button'); x.id = id; x.textContent = txt;
+    x.style.cssText = 'padding:12px 18px;border:none;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;color:#fff;background:' + bg;
+    x.onclick = fn; return x; };
+  const esc = (e) => { if (e.key === 'Escape') fechar(); };
+  const fechar = () => { document.removeEventListener('keydown', esc); ov.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
+  document.addEventListener('keydown', esc);
+  const bVoltar = bt('vfVoltar', '✏️ Voltar e corrigir', '#64748b', fechar);
+  const bGravar = bt('vfGravar', '💾 Gravar assim', 'linear-gradient(135deg,#28a745,#1e7e34)', async () => {
+    bGravar.disabled = true; bVoltar.disabled = true; bGravar.textContent = '⏳ A gravar…';
+    const ok = await enviarGravacao(nome, nomeNovo, html);
+    if (ok) fechar();
+    else { bGravar.disabled = false; bVoltar.disabled = false; bGravar.textContent = '💾 Gravar assim'; }
+  });
+  barra.append(info, bVoltar, bGravar);
+  const fr = document.createElement('iframe');
+  fr.id = 'vfFrame'; fr.src = url;
+  fr.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox');   // desenha, mas nao corre nada
+  fr.style.cssText = 'flex:1;width:100%;border:none;background:#fff';
+  ov.append(barra, fr); document.body.appendChild(ov);
+}
+
+async function enviarGravacao(nome, nomeNovo, html) {
+  const b = document.getElementById('btnGravarPasta');
+  try {
+    const r = await fetch('/api/qc-relatorio?nome=' + encodeURIComponent(nomeNovo) +
+                          '&subpasta=Revistos&apagar=' + encodeURIComponent(nome), {
+      method: 'POST', headers: { 'Content-Type': 'text/html; charset=utf-8' }, body: html
+    });
+    const j = await r.json();
+    if (j && j.ok) {
+      if (b) { b.innerHTML = '✅ Gravado'; b.style.background = 'linear-gradient(135deg,#28a745,#1e7e34)'; }
+      painelGravado(nomeNovo, j.msg);
+      return true;
+    }
+    alert('Não gravei:\n\n' + ((j && j.msg) || 'erro desconhecido'));
+    return false;
+  } catch (e) {
+    alert('Não consegui falar com o servidor local do Sistema Embaresa.\n\n' + e.message +
+          '\n\nAbre o sistema pelo atalho "Abrir Sistema Embaresa" e tenta outra vez.');
+    return false;
+  }
+}
+
+// Depois de gravar: tres saidas claras em vez de ficar parado no Passo 8.
+function reporBotaoGravar() {
+  const b = document.getElementById('btnGravarPasta'); if (!b) return;
+  b.disabled = false; b.innerHTML = '💾 Gravar na pasta';
+  b.style.background = 'linear-gradient(135deg,#0d6efd,#0a58ca)'; b.style.display = 'none';
+}
+function painelGravado(nomeNovo, msg) {
+  const velho = document.getElementById('painelGravado'); if (velho) velho.remove();
+  const ov = document.createElement('div'); ov.id = 'painelGravado';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(10,20,30,.55);display:flex;align-items:center;justify-content:center;padding:20px';
+  const cx = document.createElement('div');
+  cx.style.cssText = 'background:#fff;border-radius:14px;max-width:560px;width:100%;padding:24px;box-shadow:0 10px 40px rgba(0,0,0,.35)';
+  cx.innerHTML = '<div style="font-size:44px;line-height:1">✅</div>' +
+    '<h2 style="margin:10px 0 6px;font-size:22px;color:#1e7e34">Relatório gravado</h2>' +
+    '<div style="font-family:monospace;font-size:13px;background:#f1f5f9;border-radius:6px;padding:8px 10px;word-break:break-all">' + escapeHtml(nomeNovo) + '</div>' +
+    '<p style="margin:10px 0 18px;color:#475569;font-size:14px">Ficou na pasta <b>Revistos</b> — ' + escapeHtml(msg || '') + '.</p>';
+  const linha = document.createElement('div'); linha.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap';
+  const bt = (id, txt, bg, fn) => { const x = document.createElement('button'); x.id = id; x.textContent = txt;
+    x.style.cssText = 'flex:1 1 150px;padding:12px 14px;border:none;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;color:#fff;background:' + bg;
+    x.onclick = fn; linha.appendChild(x); };
+  const fechar = () => ov.remove();
+  const limpar = async () => { fechar(); state._ficheiroRevisao = ''; reporBotaoGravar(); await limparEstadoParaNovo(); };
+  bt('pgSeguinte', '📁 Abrir o seguinte', 'linear-gradient(135deg,#0d6efd,#0a58ca)', async () => { await limpar(); abrirRelatorioExistente(); });
+  bt('pgTerminar', '✔ Terminar', 'linear-gradient(135deg,#28a745,#1e7e34)', limpar);
+  bt('pgFicar', 'Ficar neste', '#64748b', fechar);
+  cx.appendChild(linha);
+  const nota = document.createElement('p'); nota.style.cssText = 'margin:12px 0 0;font-size:12px;color:#94a3b8';
+  nota.textContent = '"Ficar neste" deixa o relatório aberto — por exemplo para o reencaminhar à Aernnova.';
+  cx.appendChild(nota); ov.appendChild(cx); document.body.appendChild(ov);
+}
+
 function mostrarBannerModoEdicao(nomeFicheiro) {
+  state._ficheiroRevisao = nomeFicheiro || '';
+  reporBotaoGravar();   // relatorio novo: o botao nao pode vir ja "Gravado" do anterior
   let banner = document.getElementById('bannerModoEdicao');
   if (!banner) {
     banner = document.createElement('div');
