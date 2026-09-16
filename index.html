@@ -1103,11 +1103,29 @@
           <label>Colaborador Aernnova</label>
           <input type="text" id="operadorCliente" placeholder="Nome do representante Aernnova" oninput="atualizarDisplayCliente()">
         </div>
-        <canvas id="sigCliente" class="sig-canvas"></canvas>
-        <div class="sig-canvas-hint">👆 Assinar com o dedo dentro do quadro</div>
-        <div class="sig-actions">
-          <button class="btn-sig-clear" onclick="limparAssinatura('sigCliente')">Limpar</button>
-          <span class="sig-status" id="statusSigCliente">Por assinar</span>
+        <!-- 16-09-2026 — a Sónia: "quando o da Aernnova assina não sabe o que está a assinar".
+             Agora vê o que assina (botão que abre o relatório com as fotos), tem à frente a
+             declaração de conformidade, e se não quiser assinar tem de ficar o motivo. -->
+        <div class="def-info" style="background:#f0f7ff;border:1px solid #cfe0f3;border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+          <strong>Declaração:</strong> confirmo que verifiquei esta caixa, que está <strong>conforme</strong> e no estado documentado
+          nas fotografias deste relatório.
+        </div>
+        <button class="btn btn-secondary" style="width:100%;margin-bottom:10px;" onclick="mostrarParaAssinar()">👁 Mostrar o relatório a quem vai assinar</button>
+        <div id="blocoSigCliente">
+          <canvas id="sigCliente" class="sig-canvas"></canvas>
+          <div class="sig-canvas-hint">👆 Assinar com o dedo dentro do quadro</div>
+          <div class="sig-actions">
+            <button class="btn-sig-clear" onclick="limparAssinatura('sigCliente')">Limpar</button>
+            <span class="sig-status" id="statusSigCliente">Por assinar</span>
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:10px;margin-top:10px;font-weight:600;">
+          <input type="checkbox" id="recusaCliente" style="width:20px;height:20px;" onchange="onRecusaCliente()">
+          O colaborador da Aernnova não quis assinar
+        </label>
+        <div id="blocoMotivoRecusa" style="display:none;margin-top:8px;">
+          <label>Porquê? O que disse</label>
+          <textarea id="motivoRecusaCliente" rows="2" placeholder="ex.: não é ele que assina; quis ver com o responsável primeiro"></textarea>
         </div>
       </div>
     </div>
@@ -1221,7 +1239,7 @@ const CONFIG = {
   urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.7.9'
+  versao: '1.8.0'
 };
 // ============================================
 
@@ -2322,7 +2340,9 @@ function validarPasso(n) {
       if (!d.operadorCliente || d.operadorCliente === '—') erros.push('Indique o nome do colaborador Aernnova.');
       if (!sigOK(state.signatures.embaresa)) erros.push('Recolha a assinatura do Operador Embaresa 1.');
       if (!sigOK(state.signatures.embaresa2)) erros.push('Recolha a assinatura do Operador Embaresa 2.');
-      if (!sigOK(state.signatures.cliente)) erros.push('Recolha a assinatura do colaborador Aernnova.');
+      if (recusaClienteAtiva()) {
+        if (!motivoRecusaCliente()) erros.push('Escreva porque é que o colaborador da Aernnova não assinou.');
+      } else if (!sigOK(state.signatures.cliente)) erros.push('Recolha a assinatura do colaborador Aernnova.');
       break;
   }
 
@@ -2779,7 +2799,8 @@ async function confirmarEncerrarTurno() {
   if (!sigOK(state.signatures.embaresa)) faltam.push('Assinatura do Operador Embaresa 1');
   if (!sigOK(state.signatures.embaresa2)) faltam.push('Assinatura do Operador Embaresa 2');
   if (!d.operadorCliente || d.operadorCliente === '—') faltam.push('Nome do colaborador Aernnova');
-  if (!sigOK(state.signatures.cliente)) faltam.push('Assinatura do colaborador Aernnova');
+  if (recusaClienteAtiva()) { if (!motivoRecusaCliente()) faltam.push('Motivo de o colaborador da Aernnova não assinar'); }
+  else if (!sigOK(state.signatures.cliente)) faltam.push('Assinatura do colaborador Aernnova');
 
   if (faltam.length && !isModoAdmin()) {
     alert('⚠️ Para encerrar o turno falta:\n\n• ' + faltam.join('\n• ') +
@@ -4028,9 +4049,13 @@ function gerarRelatorioHTML() {
   const sigEmbaresa2HTML = sigValida(state.signatures.embaresa2)
     ? `<img src="${state.signatures.embaresa2}" style="max-width:240px; border-bottom:1px solid #999;">`
     : sigPlaceholder;
-  const sigClienteHTML = sigValida(state.signatures.cliente)
-    ? `<img src="${state.signatures.cliente}" style="max-width:240px; border-bottom:1px solid #999;">`
-    : sigPlaceholder;
+  const recusouCliente = (typeof recusaClienteAtiva === 'function') && recusaClienteAtiva();
+  const motivoCliente = (typeof motivoRecusaCliente === 'function') ? motivoRecusaCliente() : '';
+  const sigClienteHTML = recusouCliente
+    ? `<div style="background:#fdecec;border:1px solid #f5c2c2;color:#b91c1c;border-radius:6px;padding:8px;font-size:0.8rem;text-align:left;">⚠ Não assinou.<br>Motivo indicado: ${escapeHtml(motivoCliente || '—')}</div>`
+    : (sigValida(state.signatures.cliente)
+      ? `<img src="${state.signatures.cliente}" style="max-width:240px; border-bottom:1px solid #999;">`
+      : sigPlaceholder);
 
   const html = `<!DOCTYPE html>
 <html lang="pt">
@@ -4189,6 +4214,7 @@ function gerarRelatorioHTML() {
     <div class="rep-sig">
       <div class="rep-sig-label">Colaborador Aernnova</div>
       <div class="rep-sig-name">${escapeHtml(d.operadorCliente)}</div>
+      <div style="font-size:0.72rem;color:#666;margin-bottom:6px;font-style:italic;">Declara ter verificado a caixa e que está conforme o documentado neste relatório.</div>
       ${sigClienteHTML}
       <div style="font-size:0.75rem; color:#666; margin-top:6px;">Data: ${d.dataFormatada}</div>
     </div>
@@ -4376,8 +4402,36 @@ function abrirFichaRastreabilidade() {
 // ============================================
 // PRÉ-VISUALIZAÇÃO
 // ============================================
+// Mostrar o relatório a QUEM VAI ASSINAR, no passo das assinaturas: sem validações (ainda falta
+// a assinatura dele) e sem o botão de enviar, para ninguém enviar sem querer enquanto o mostra.
+function mostrarParaAssinar() {
+  const html = gerarRelatorioHTML();
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'width:100%; height:64vh; border:none;';
+  document.getElementById('previewContent').innerHTML = '';
+  document.getElementById('previewContent').appendChild(iframe);
+  iframe.contentDocument.open();
+  iframe.contentDocument.write(html);
+  iframe.contentDocument.close();
+  const btnEnv = document.querySelector('#modalPreview .btn-success');
+  if (btnEnv) btnEnv.style.display = 'none';
+  document.getElementById('modalPreview').classList.add('active');
+}
+function recusaClienteAtiva() { const c = document.getElementById('recusaCliente'); return !!(c && c.checked); }
+function motivoRecusaCliente() { const t = document.getElementById('motivoRecusaCliente'); return t ? String(t.value || '').trim() : ''; }
+function onRecusaCliente() {
+  const recusou = recusaClienteAtiva();
+  const bloco = document.getElementById('blocoSigCliente');
+  const motivo = document.getElementById('blocoMotivoRecusa');
+  if (bloco) bloco.style.display = recusou ? 'none' : '';
+  if (motivo) motivo.style.display = recusou ? '' : 'none';
+  if (recusou) { try { limparAssinatura('sigCliente'); } catch (e) {} }
+  if (typeof autoSave === 'function') autoSave(true);
+}
 function previsualizarRelatorio() {
   if (!validarBasico(true)) return;
+  const btnEnv = document.querySelector('#modalPreview .btn-success');
+  if (btnEnv) btnEnv.style.display = '';
   const html = gerarRelatorioHTML();
   // Renderizar dentro de um iframe para isolamento de estilos
   const iframe = document.createElement('iframe');
@@ -5295,6 +5349,8 @@ function recolherEstadoCompleto() {
     currentStep: state.currentStep,
     modo: state.modo,
     formData: {
+      recusaCliente: v('recusaCliente'),
+      motivoRecusaCliente: v('motivoRecusaCliente'),
       planoNum: v('planoNum'),
       cliente: v('cliente'),
       numEncomenda: v('numEncomenda'),
