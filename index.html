@@ -1242,7 +1242,7 @@ const CONFIG = {
   urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.8.5'
+  versao: '1.8.6'
 };
 // ============================================
 
@@ -2015,7 +2015,7 @@ const E2_FASES = [
 // ESTADO GLOBAL
 // ============================================
 const state = {
-  fotos: [], // {id, dataUrl, label, step}
+  fotos: [], // {id, dataUrl, label, step, ts, tsFonte}  v1.8.6: ts = hora da foto (ISO); tsFonte = camara|exif|ficheiro|app
   videos: [],
   videosE2: {
     inicio: { gravado: false, nomeFicheiro: '', tamanhoMB: 0, dataHora: '', dataHoraFmt: '', link: '', notas: '' },
@@ -2411,6 +2411,9 @@ function validarPasso(n) {
   if (n === 1 && state.cronometro.sessoes.length === 0) {
     iniciarNovaSessao();
     if (typeof iniciarLiveTimer === 'function') iniciarLiveTimer();
+  } else {
+    // v1.8.6 — num turno novo, avançar de passo também liga (ver ligarCronometroSeParado)
+    ligarCronometroSeParado('passo');
   }
 
   return true;
@@ -2663,6 +2666,29 @@ function temSessaoEmCurso() {
   return ultima && !ultima.fim;
 }
 
+// v1.8.6 — O CRONÓMETRO LIGA-SE SOZINHO QUANDO HÁ TRABALHO.
+//  • Turno novo: até aqui só o 1.º turno arrancava sozinho (ao sair do Passo 1); nos
+//    seguintes o cronómetro ficava em pausa à espera do ▶️ Retomar — e ninguém carregava.
+//    EM 2724 (28/29-09): o 2.º turno trabalhou 6 h e o relatório não tinha tempo nenhum.
+//    Agora liga-se quando a equipa nova avança de passo ou tira uma foto.
+//  • Pausa esquecida: tirar uma foto com o cronómetro parado retoma-o.
+// Não mexe: antes do 1.º arranque (continua a ser ao sair do Passo 1), enquanto se encerra
+// um turno, nem no Modo Admin / Modo Revisão (a Sónia a rever ou a reconstruir no portátil).
+function ligarCronometroSeParado(motivo) {
+  normalizarCronometro();
+  if (state.cronometro.sessoes.length === 0) return false;
+  if (temSessaoEmCurso()) return false;
+  if (state._aEncerrarTurno) return false;
+  if ((typeof isModoAdmin === 'function' && isModoAdmin()) || document.getElementById('bannerModoEdicao')) return false;
+  const turnoNovo = haTurnosAnteriores() && sessoesDoTurnoActual().length === 0;
+  if (motivo !== 'foto' && !turnoNovo) return false;   // avançar de passo só liga num turno novo
+  iniciarNovaSessao();
+  if (typeof iniciarLiveTimer === 'function') iniciarLiveTimer();
+  if (typeof actualizarBotaoPausar === 'function') actualizarBotaoPausar();
+  if (typeof mostrarToast === 'function') mostrarToast(turnoNovo ? `⏱️ Turno ${numeroTurnoActual()}: cronómetro ligado` : '▶️ Cronómetro retomado (foto tirada)');
+  return true;
+}
+
 // Calcular tempo total efectivo (soma das sessões fechadas + sessão em curso)
 function tempoTotalEfectivoMs() {
   normalizarCronometro();
@@ -2777,11 +2803,24 @@ function checklistKeysDoTurnoActual() {
   return Object.keys(state.checklist || {}).filter(k => !jaEnviadas.has(k));
 }
 
+// Sessões do cronómetro que já pertencem a turnos fechados. O numSessoes de cada turno é
+// ACUMULADO (as sessões da caixa até ao fim desse turno), por isso conta o do último.
+// v1.8.6 — somavam-se todos, o que a partir do 3.º turno contava o 1.º duas vezes e
+// escondia as primeiras sessões do turno em curso.
+function sessoesDeTurnosFechados() {
+  return normalizarTurnos().reduce((m, t) => Math.max(m, t.numSessoes || 0), 0);
+}
+
+// De que turno é a sessão n.º i (0 = a primeira da caixa)
+function turnoDaSessao(i) {
+  const t = normalizarTurnos().find(t => i < (t.numSessoes || 0));
+  return t ? t.numero : numeroTurnoActual();
+}
+
 // Sessões do cronómetro que pertencem ao turno em curso
 function sessoesDoTurnoActual() {
   normalizarCronometro();
-  const jaContadas = normalizarTurnos().reduce((s, t) => s + (t.numSessoes || 0), 0);
-  return state.cronometro.sessoes.slice(jaContadas);
+  return state.cronometro.sessoes.slice(sessoesDeTurnosFechados());
 }
 
 // Tempo efectivo só do turno em curso
@@ -2933,7 +2972,7 @@ async function fecharTurnoNoEstado(d, nTurno, fotosTurno, sessoesTurno) {
     colaboradorAernnova: d.operadorCliente,
     fotoIds: fotosTurno.map(f => f.id),
     checklistKeys: checklistKeysDoTurnoActual(),
-    numSessoes: normalizarTurnos().reduce((s, t) => s + (t.numSessoes || 0), 0) + sessoesTurno.length,
+    numSessoes: sessoesDeTurnosFechados() + sessoesTurno.length,   // acumulado (v1.8.6)
     inicio: sessoesTurno.length ? sessoesTurno[0].inicio : null,
     fim: sessoesTurno.length ? sessoesTurno[sessoesTurno.length - 1].fim : null,
     tempoMs: tempoTurnoActualMs(),
@@ -2972,7 +3011,7 @@ async function fecharTurnoNoEstado(d, nTurno, fotosTurno, sessoesTurno) {
 
   alert(`✅ Turno ${nTurno} encerrado e enviado.\n\n` +
         `A caixa ${d.numSerie} fica guardada em "📂 Rascunhos".\n\n` +
-        `A próxima equipa abre o rascunho, indica os seus nomes no Passo 1 e continua o trabalho.`);
+        `A próxima equipa abre o rascunho, indica os seus nomes no Passo 1 e continua o trabalho — o cronómetro dela liga-se sozinho quando avançar.`);
 }
 
 // Aviso permanente de que esta caixa já tem turnos fechados
@@ -2988,7 +3027,7 @@ function mostrarBannerTurnoAberto() {
     `este é o <strong>Turno ${numeroTurnoActual()}</strong>.<br>` +
     `<span style="font-size:0.82rem;">` +
     turnos.map(t => `Turno ${t.numero}: ${escapeHtml(t.operador1 || '—')} / ${escapeHtml(t.operador2 || '—')} (${(t.fotoIds || []).length} fotos)`).join(' • ') +
-    `<br>Indique os nomes da equipa de hoje no Passo 1. O relatório final levará só o trabalho deste turno.</span>`;
+    `<br>Indique os nomes da equipa de hoje no Passo 1 — o cronómetro deste turno liga-se ao avançar. O relatório final levará só o trabalho deste turno.</span>`;
   const container = document.querySelector('.container') || document.body;
   const primeiro = container.querySelector('.card');
   if (primeiro) container.insertBefore(banner, primeiro);
@@ -3179,17 +3218,26 @@ function verificarMudancaDeDia() {
   // Se passaram mais de 6 horas OU mudou o dia desde o início, perguntar
   const mudouDia = inicioSessao.toDateString() !== agora.toDateString();
   if (diffHoras > 6 || mudouDia) {
+    // v1.8.6 — a última foto tirada nesta sessão diz até quando se trabalhou: fecha-se aí,
+    // em vez de deitar fora a sessão inteira (antes ficava com duração zero).
+    const iniMs = inicioSessao.getTime();
+    const ultFotoMs = (state.fotos || []).reduce((m, f) => {
+      const t = Date.parse(f.ts || '');
+      return (t >= iniMs && t <= agora.getTime()) ? Math.max(m, t) : m;
+    }, 0);
     setTimeout(() => {
       const opcoes = `O cronómetro estava a correr desde ${inicioSessao.toLocaleString('pt-PT')}.\n\n` +
         `Já passaram ${Math.floor(diffHoras)}h ${Math.floor((diffHoras % 1) * 60)}min.\n\n` +
-        `OK = Descontar este tempo como pausa (recomendado se houve interrupção)\n` +
+        (ultFotoMs
+          ? `OK = Contar só até à última foto (${new Date(ultFotoMs).toLocaleString('pt-PT')}) e começar uma sessão nova agora (recomendado)\n`
+          : `OK = Descontar este tempo como pausa (recomendado se houve interrupção)\n`) +
         `Cancelar = Continuar a contar (foi mesmo trabalho contínuo)`;
       if (confirm(opcoes)) {
-        // Descontar como pausa: fechar sessão no momento do início (duração zero)
-        // E criar uma nova sessão aberta agora
-        ultima.fim = ultima.inicio;
+        // Fechar a sessão à hora da última foto (sem fotos: no início, duração zero)
+        // e criar uma nova sessão aberta agora
+        ultima.fim = ultFotoMs ? new Date(ultFotoMs).toISOString() : ultima.inicio;
         iniciarNovaSessao();
-        mostrarToast('⏱️ Pausa registada. Nova sessão iniciada.');
+        mostrarToast(ultFotoMs ? '⏱️ Sessão fechada à hora da última foto. Nova sessão iniciada.' : '⏱️ Pausa registada. Nova sessão iniciada.');
       }
     }, 800);
   }
@@ -3361,7 +3409,8 @@ function abrirCamara(stepKey) {
       if (total > 25) { quality = 0.55; maxSize = 1200; }
       else if (total > 15) { quality = 0.65; maxSize = 1400; }
       const dataUrl = canvasParaDataUrl(canvas, maxSize, quality);
-      state.fotos.push({ id: nextPhotoId++, dataUrl, label: '', step: stepKey });
+      ligarCronometroSeParado('foto');   // v1.8.6
+      state.fotos.push({ id: nextPhotoId++, dataUrl, label: '', step: stepKey, ts: new Date().toISOString(), tsFonte: 'camara' });
       renderFotosStep(stepKey);
       autoSave(true);
       conta.textContent = '📷 ' + nDoStep() + ' foto(s) neste passo';
@@ -3399,11 +3448,13 @@ async function onPhotoSelected(event, stepKey) {
     }
   }
 
+  ligarCronometroSeParado('foto');   // v1.8.6
   let falharam = 0;
   for (const file of files) {
     try {
       const dataUrl = await comprimirImagem(file, maxSize, quality);
-      state.fotos.push({ id: nextPhotoId++, dataUrl, label: '', step: stepKey });
+      const hora = await horaDaFoto(file);   // v1.8.6 — lida do ficheiro original (o canvas deita fora o EXIF)
+      state.fotos.push({ id: nextPhotoId++, dataUrl, label: '', step: stepKey, ts: hora.ts, tsFonte: hora.fonte });
 
       // ⚠️ v1.6.0 — cópia para Downloads DESLIGADA por defeito.
       // Motivo: enchia a memória do telemóvel em poucos dias (centenas de ficheiros),
@@ -3447,6 +3498,80 @@ async function guardarFotoLocalmente(dataUrl, stepKey) {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+// v1.8.6 — HORA DE CADA FOTO. A foto é recomprimida num canvas e o EXIF (onde vem a hora)
+// perde-se, por isso a hora passa a ficar no objecto da foto (ts) e aparece no relatório.
+// Câmara da app: a hora do momento. Fotos que entram por ficheiro (câmara do sistema,
+// explorador no Modo Admin): a hora EXIF a que foram tiradas; sem EXIF, a do ficheiro.
+// (A Sónia, 30-09, EM 2724: "podes verificar pelas horas das fotos" — não se podia.)
+async function horaDaFoto(file) {
+  const exif = await horaExifDaFoto(file);
+  if (exif) return { ts: exif, fonte: 'exif' };
+  if (file && file.lastModified) return { ts: new Date(file.lastModified).toISOString(), fonte: 'ficheiro' };
+  return { ts: new Date().toISOString(), fonte: 'app' };
+}
+
+// DateTimeOriginal (ou DateTime) do EXIF de um JPEG; null se não houver
+async function horaExifDaFoto(file) {
+  try {
+    if (!file || !file.slice) return null;
+    const dv = new DataView(await file.slice(0, 256 * 1024).arrayBuffer());
+    if (dv.byteLength < 12 || dv.getUint16(0) !== 0xFFD8) return null;
+    let p = 2;
+    while (p + 4 <= dv.byteLength) {
+      if (dv.getUint8(p) !== 0xFF) return null;
+      const marca = dv.getUint8(p + 1);
+      if (marca === 0xDA || marca === 0xD9) return null;   // começou a imagem: não há EXIF
+      const tam = dv.getUint16(p + 2);
+      if (marca === 0xE1 && p + 10 <= dv.byteLength && dv.getUint32(p + 4) === 0x45786966) {  // "Exif"
+        return dataDoTiff(dv, p + 10, Math.min(dv.byteLength, p + 2 + tam));
+      }
+      p += 2 + tam;
+    }
+  } catch (e) { /* ficheiro estranho: fica a hora do ficheiro */ }
+  return null;
+}
+
+function dataDoTiff(dv, t0, fim) {
+  const le = dv.getUint16(t0) === 0x4949;                  // "II" = little-endian
+  const u16 = o => dv.getUint16(t0 + o, le);
+  const u32 = o => dv.getUint32(t0 + o, le);
+  const etiqueta = (ifd, alvo) => {                        // valor (ou deslocamento) de uma etiqueta
+    if (t0 + ifd + 2 > fim) return null;
+    const n = u16(ifd);
+    for (let i = 0; i < n; i++) {
+      const e = ifd + 2 + i * 12;
+      if (t0 + e + 12 > fim) return null;
+      if (u16(e) === alvo) return u32(e + 8);
+    }
+    return null;
+  };
+  const texto = o => { let s = ''; for (let i = 0; i < 19 && t0 + o + i < fim; i++) s += String.fromCharCode(dv.getUint8(t0 + o + i)); return s; };
+  const ifd0 = u32(4);
+  let s = '';
+  const exifIfd = etiqueta(ifd0, 0x8769);
+  if (exifIfd != null) { const o = etiqueta(exifIfd, 0x9003); if (o != null) s = texto(o); }
+  if (!s) { const o = etiqueta(ifd0, 0x0132); if (o != null) s = texto(o); }
+  const m = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(s);
+  if (!m || +m[1] < 2010) return null;                     // relógio da câmara por acertar
+  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+// "28/09/2026 15:42" (hora local)
+function horaCurta(x) {
+  const d = new Date(x);
+  if (isNaN(d.getTime())) return '';
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+// a hora por baixo de cada foto, no relatório
+function horaFotoHTML(f) {
+  const h = (f && f.ts) ? horaCurta(f.ts) : '';
+  if (!h) return '';
+  return '<span class="rep-photo-hora">🕒 ' + h + (f.tsFonte === 'ficheiro' ? ' (hora do ficheiro)' : '') + '</span> ';
 }
 
 function comprimirImagem(file, maxSize, quality) {
@@ -3919,6 +4044,7 @@ function getDados() {
   }
 
   // Formatar lista de sessões para o relatório
+  const comTurnos = haTurnosAnteriores();   // v1.8.6 — dizer de que turno é cada sessão
   const sessoesFmt = sessoes.map((s, idx) => {
     if (!s.inicio) return null;
     const ini = new Date(s.inicio);
@@ -3930,6 +4056,7 @@ function getDados() {
     const ds = durSec % 60;
     return {
       num: idx + 1,
+      turno: comTurnos ? turnoDaSessao(idx) : null,
       inicioFmt: ini.toLocaleString('pt-PT'),
       fimFmt: fim ? fim.toLocaleString('pt-PT') : '—',
       duracaoFmt: fim ? ((dh > 0 ? dh + 'h ' : '') + dm + 'min ' + ds + 's') : '—'
@@ -4037,11 +4164,22 @@ function gerarRelatorioHTML() {
           <div class="rep-photos">${fotosDoPasso.map(f => `
             <div class="rep-photo">
               <img data-fid="${f.id}" src="${f.dataUrl}" alt="">
-              <div class="rep-photo-label">${escapeHtml(f.label) || ''}</div>
+              <div class="rep-photo-label">${horaFotoHTML(f)}${escapeHtml(f.label) || ''}</div>
             </div>
           `).join('')}</div>
         </div>`;
     }).join('');
+
+  // v1.8.6 — período das fotos deste relatório: confirma quando se trabalhou, mesmo que o
+  // cronómetro não tenha sido ligado
+  const horasFotos = fotosParaMostrar.map(f => Date.parse(f.ts || '')).filter(t => t > 0).sort((a, b) => a - b);
+  const fotosHorasHTML = !horasFotos.length ? '' :
+    `<div style="margin-top:8px;font-size:0.85rem;color:#1a1a2e;">📸 ` +
+    (horasFotos.length === 1
+      ? `Foto deste relatório tirada a <strong>${horaCurta(horasFotos[0])}</strong>`
+      : `Fotos deste relatório tiradas entre <strong>${horaCurta(horasFotos[0])}</strong> e <strong>${horaCurta(horasFotos[horasFotos.length - 1])}</strong>`) +
+    (horasFotos.length < fotosParaMostrar.length ? ` (${horasFotos.length} de ${fotosParaMostrar.length} fotos têm hora)` : '') + `.</div>`;
+  const sessoesComTurno = d.cronometroSessoes.some(s => s.turno);
 
   // Vídeos: para E2 mostrar 3 fases com nome de ficheiro + data/hora (sem links — vão por OneDrive)
   let videosHTML;
@@ -4132,6 +4270,7 @@ function gerarRelatorioHTML() {
   .rep-photo img { width: 100%; height: 300px; object-fit: contain; background: #f6f8fa; display: block; cursor: zoom-in; }
   @media print { .rep-photo img { height: 200px; } }
   .rep-photo-label { padding: 4px 8px; font-size: 0.78rem; color: #555; background: #fafbfc; border-top: 1px solid #eee; min-height: 18px; }
+  .rep-photo-hora { color: #0d47a1; font-weight: 600; margin-right: 6px; white-space: nowrap; }
   .rep-videos { display: flex; flex-direction: column; gap: 8px; }
   .rep-video { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: #f0f7ff; border: 1px solid #00d4ff; border-radius: 8px; }
   .rep-video.rep-video-missing { background: #fff3e0; border-color: #ff9800; }
@@ -4215,14 +4354,16 @@ function gerarRelatorioHTML() {
       <div class="rep-cronometro-valor">${escapeHtml(d.cronometroTotal)}</div>
     </div>
   </div>
+  ${fotosHorasHTML}
   ${d.cronometroNumSessoes > 1 ? `
   <div style="margin-top:14px;">
     <div style="font-weight:600;font-size:0.9rem;color:#1a1a2e;margin-bottom:8px;">
-      📋 Detalhe das sessões (${d.cronometroNumSessoes} sessões — embalamento com pausas)
+      📋 Detalhe das sessões (${d.cronometroNumSessoes} sessões — ${sessoesComTurno ? 'em ' + new Set(d.cronometroSessoes.map(s => s.turno)).size + ' turnos' : 'embalamento com pausas'})
     </div>
     <table class="rep-table" style="font-size:0.85rem;">
       <tr>
         <th style="background:#f0f7ff;padding:6px;text-align:left;border:1px solid #ddd;">Sessão</th>
+        ${sessoesComTurno ? '<th style="background:#f0f7ff;padding:6px;text-align:left;border:1px solid #ddd;">Turno</th>' : ''}
         <th style="background:#f0f7ff;padding:6px;text-align:left;border:1px solid #ddd;">Início</th>
         <th style="background:#f0f7ff;padding:6px;text-align:left;border:1px solid #ddd;">Fim</th>
         <th style="background:#f0f7ff;padding:6px;text-align:left;border:1px solid #ddd;">Duração</th>
@@ -4230,6 +4371,7 @@ function gerarRelatorioHTML() {
       ${d.cronometroSessoes.map(s => `
         <tr>
           <td style="padding:6px;border:1px solid #ddd;">${s.num}</td>
+          ${sessoesComTurno ? `<td style="padding:6px;border:1px solid #ddd;">Turno ${s.turno}</td>` : ''}
           <td style="padding:6px;border:1px solid #ddd;">${escapeHtml(s.inicioFmt)}</td>
           <td style="padding:6px;border:1px solid #ddd;">${escapeHtml(s.fimFmt)}</td>
           <td style="padding:6px;border:1px solid #ddd;"><strong>${escapeHtml(s.duracaoFmt)}</strong></td>
