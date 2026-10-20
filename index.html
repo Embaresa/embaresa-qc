@@ -1242,7 +1242,7 @@ const CONFIG = {
   urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.8.6'
+  versao: '1.8.7'
 };
 // ============================================
 
@@ -1913,8 +1913,8 @@ function atualizarStatusSinc() {
 const PLANOS_DB = {
   "220310R1": { nome: "EMBALAGEM EH do LEGACY500_Sin cajas carton", tipo: "EMBALAGEM", dimensoes: "7500x2250x1950" },
   "230220R0": { nome: "FRAÇÃO E2 _22", tipo: "FRACAO", dimensoes: "2200x800x1012" },
-  "230221R1": { nome: "FRAÇÃO E2 _12", tipo: "FRACAO", dimensoes: "3750x1245x912" },
-  "230222R0": { nome: "FRAÇÃO E2 _11", tipo: "FRACAO", dimensoes: "10900x870x507" },
+  "230221R2": { nome: "FRAÇÃO E2 _12", tipo: "FRACAO", dimensoes: "3750x1340x650" },   // 15-10-2026: revisão R2 (antes 230221R1)
+  "230222R1": { nome: "FRAÇÃO E2 _11", tipo: "FRACAO", dimensoes: "10500x870x505" },   // 15-10-2026: revisão R1 (antes 230222R0), 10 separadores
   "230223R0": { nome: "FRAÇÃO E1_F Long", tipo: "FRACAO", dimensoes: "11800x700x1040" },
   "230224R0": { nome: "FRAÇÃO E1_G", tipo: "FRACAO", dimensoes: "11800x1100x1190" },
   "230260R1": { nome: "CAIXA SOBRAS SEM TAMPA_OP. REFORZADA", tipo: "EMBALAGEM", dimensoes: "" },
@@ -3322,6 +3322,18 @@ function canvasParaDataUrl(src, maxSize, quality) {
   return c.toDataURL('image/jpeg', quality);
 }
 
+// v1.8.7 — a foto está toda preta? Vê-se numa miniatura 32x32: se nenhum ponto passa de 20
+// (em 255), não há imagem. Um relatório de teste a 01-10 saiu com as 14 fotos pretas (máx. 4).
+function fotoPreta(src) {
+  try {
+    const c = document.createElement('canvas'); c.width = 32; c.height = 32;
+    const x = c.getContext('2d'); x.drawImage(src, 0, 0, 32, 32);
+    const d = x.getImageData(0, 0, 32, 32).data;
+    for (let i = 0; i < d.length; i += 4) { if (Math.max(d[i], d[i + 1], d[i + 2]) > 20) return false; }
+    return true;
+  } catch (e) { return false; }
+}
+
 // Câmara dentro da app (webcam ao vivo + tirar foto). Fica aberta para tirar várias.
 // No Windows o facingMode nem sempre escolhe a traseira -> botao "Trocar camara" + memoriza a escolha.
 let _camStream = null;
@@ -3404,6 +3416,11 @@ function abrirCamara(stepKey) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       canvas.getContext('2d').drawImage(video, 0, 0);
+      // v1.8.7 — foto preta (lente tapada, câmara errada ou ainda a acordar) não entra no relatório
+      if (fotoPreta(canvas)) {
+        mostrarToast('⚠️ A foto saiu PRETA — não foi guardada. Destape a lente ou carregue em 🔄 Trocar câmara.');
+        return;
+      }
       const total = (state.fotos || []).length + 1;
       let quality = 0.7, maxSize = 1600;
       if (total > 25) { quality = 0.55; maxSize = 1200; }
@@ -4476,7 +4493,10 @@ function gerarRelatorioHTML() {
 
 </body>
 </html>`;
-  return html;
+  // v1.8.7 — as secções numeram-se pela ordem em que aparecem: "3. Dimensões" vinha depois do 4
+  // e, sem checklist (desembalamento), saltava-se do 3 para o 5
+  let nSec = 0;
+  return html.replace(/<h2>\d+\. /g, () => '<h2>' + (++nSec) + '. ');
 }
 
 // Escape para JSON dentro de <script type="application/json"> (evitar quebrar o HTML)
