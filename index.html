@@ -730,10 +730,10 @@
               <option value="230265R1">230265R1 — KC390 EV</option>
               <option value="230266R0">230266R0 — KC390 LOWER DCHA./IZDA.</option>
               <option value="230267R1">230267R1 — KC390 UPPER DCHA./IZDA.</option>
-              <option value="230269R2">230269R2 — E2 LOWER IZDA.</option>
-              <option value="230312R3">230312R3 — E2 UPPER DCHA.</option>
-              <option value="230324R3">230324R3 — E2 UPPER IZDA.</option>
-              <option value="230325R2">230325R2 — E2 LOWER DCHA.</option>
+              <option value="230269R3">230269R3 — E2 LOWER IZDA.</option>
+              <option value="230312R4">230312R4 — E2 UPPER DCHA.</option>
+              <option value="230324R4">230324R4 — E2 UPPER IZDA.</option>
+              <option value="230325R3">230325R3 — E2 LOWER DCHA.</option>
               <option value="230391R1">230391R1 — ASA PRAETOR IZDA.</option>
               <option value="230395R1">230395R1 — ASA PRAETOR DCHA.</option>
               <option value="230429R1">230429R1 — EV LEGACY 500</option>
@@ -1139,13 +1139,13 @@
     <div class="step-card">
       <div class="step-title">📤 Passo 8 — Envio do Relatório</div>
       <div class="instruction">
-        O relatório vai automaticamente para a <strong>responsável de QC da Embaresa</strong>, que valida e reencaminha à Aernnova. Pode editar o destinatário se necessário.
+        O relatório vai automaticamente para a <strong>responsável de QC da Embaresa</strong>, que valida e reencaminha à Aernnova.
       </div>
 
       <div class="form-row">
         <div class="form-group full">
           <label>Destinatário (Embaresa QC)</label>
-          <input type="email" id="emailCliente" value="ssantos@embaresa.com">
+          <input type="email" id="emailCliente" value="ssantos@embaresa.com" readonly tabindex="-1" autocomplete="off" style="background:#eee;color:#555;">
         </div>
       </div>
 
@@ -1224,6 +1224,7 @@
 // ============================================
 const CONFIG = {
   // Email para onde os relatórios são enviados (Sónia, que depois reencaminha à Aernnova)
+  // 30-10-2026: é SEMPRE este; não se muda no tablet (o EM 2784 foi parar ao Gmail pessoal dela)
   emailDestino: 'ssantos@embaresa.com',
 
   // Endpoint HTTP do fluxo Power Automate "Embalamento_GetLatestVideo"
@@ -1242,7 +1243,7 @@ const CONFIG = {
   urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.8.7'
+  versao: '1.9.1'
 };
 // ============================================
 
@@ -1485,14 +1486,7 @@ function getConfigClientes() {
 }
 
 function getConfigEmailDestino() {
-  try {
-    const raw = localStorage.getItem('embaresaQC_config');
-    if (raw) {
-      const cfg = JSON.parse(raw);
-      if (cfg.emailDestino) return cfg.emailDestino;
-    }
-  } catch (e) {}
-  return CONFIG.emailDestino;
+  return CONFIG.emailDestino;   // 30-10-2026: fixo; ignora o que algum aparelho tenha guardado
 }
 
 // 🐛 BUG FIX v1.7.4 — o campo "Destinatário" aceitava qualquer texto.
@@ -1504,14 +1498,12 @@ function emailValido(e) {
 }
 
 // Rede de segurança dos 3 caminhos de envio (final, turno, parcial):
-// se o destino não for um email a sério, usa o da configuração em vez de
-// mandar lixo para o flow. Protege também o Modo Admin, que salta a validação.
+// 30-10-2026: venha o que vier do formulário ou de um rascunho antigo, vai sempre para a Sónia.
 function destinoSeguro(e) {
   const v = String(e || '').trim();
-  if (emailValido(v)) return v;
-  const fallback = getConfigEmailDestino();
-  if (v) console.warn('[QC] Destino inválido ("' + v + '") — a usar ' + fallback);
-  return fallback;
+  const fixo = getConfigEmailDestino();
+  if (v && v.toLowerCase() !== fixo) console.warn('[QC] Destino ignorado ("' + v + '") — a usar ' + fixo);
+  return fixo;
 }
 
 // v1.6.0 — cópia de cada foto para a pasta Downloads.
@@ -1650,7 +1642,6 @@ function repopularDropdownClientes() {
 function abrirDefinicoes() {
   const operadores = getConfigOperadores();
   const clientes = getConfigClientes();
-  const emailDest = getConfigEmailDestino();
 
   let modal = document.getElementById('modalDefinicoes');
   if (modal) modal.remove();
@@ -1721,11 +1712,7 @@ function abrirDefinicoes() {
 
       <div class="def-section">
         <h4>📧 Email destino</h4>
-        <div class="def-add-row">
-          <input type="email" id="emailDestinoInput" value="${escapeHtml(emailDest)}" placeholder="email@embaresa.com" />
-          <button onclick="guardarEmailDestino()">💾 Guardar</button>
-        </div>
-        <div class="def-info">Email para onde os relatórios são enviados (você, que depois reencaminha à Aernnova).</div>
+        <div class="def-info"><strong>${escapeHtml(CONFIG.emailDestino)}</strong> — os relatórios vão sempre para este email (não se altera no aparelho).</div>
       </div>
 
       <div class="def-section" style="background:#fce4ec;border:1px solid #e91e63;">
@@ -1820,15 +1807,6 @@ function removerCliente(idx) {
   abrirDefinicoes();
 }
 
-function guardarEmailDestino() {
-  const input = document.getElementById('emailDestinoInput');
-  const email = (input?.value || '').trim();
-  if (!email) { alert('Indique um email.'); return; }
-  if (!email.includes('@')) { alert('Email inválido.'); return; }
-  gravarConfig({ emailDestino: email });
-  mostrarToast('✅ Email destino guardado: ' + email);
-}
-
 function restaurarConfigPadrao() {
   if (!confirm('Restaurar TODAS as listas para os valores padrão?\n\nIsto vai substituir as suas alterações.')) return;
   localStorage.removeItem('embaresaQC_config');
@@ -1921,10 +1899,10 @@ const PLANOS_DB = {
   "230265R1": { nome: "EMBALAGEM KC390 - EV", tipo: "EMBALAGEM", dimensoes: "9100x2300x3645" },
   "230266R0": { nome: "EMBALAGEM KC390 LOWER DCHA./IZDA.", tipo: "EMBALAGEM", dimensoes: "19223x2324x3600" },
   "230267R1": { nome: "EMBALAGEM KC390 UPPER DCHA./IZDA.", tipo: "EMBALAGEM", dimensoes: "19223x2324x3600" },
-  "230269R2": { nome: "EMBALAGEM E2 LOWER IZDA.", tipo: "EMBALAGEM", dimensoes: "16876x2306x2182" },
-  "230312R3": { nome: "EMBALAGEM E2 UPPER DCHA.", tipo: "EMBALAGEM", dimensoes: "16876x2288x2182" },
-  "230324R3": { nome: "EMBALAGEM E2 UPPER IZDA.", tipo: "EMBALAGEM", dimensoes: "16876x2288x2182" },
-  "230325R2": { nome: "EMBALAGEM E2 LOWER DCHA.", tipo: "EMBALAGEM", dimensoes: "16876x2306x2182" },
+  "230269R3": { nome: "EMBALAGEM E2 LOWER IZDA.", tipo: "EMBALAGEM", dimensoes: "16876x2306x2182" },
+  "230312R4": { nome: "EMBALAGEM E2 UPPER DCHA.", tipo: "EMBALAGEM", dimensoes: "16876x2288x2182" },
+  "230324R4": { nome: "EMBALAGEM E2 UPPER IZDA.", tipo: "EMBALAGEM", dimensoes: "16876x2288x2182" },
+  "230325R3": { nome: "EMBALAGEM E2 LOWER DCHA.", tipo: "EMBALAGEM", dimensoes: "16876x2306x2182" },
   "230385R0": { nome: "FRAÇÃO E2 _CAJA 1 4M", tipo: "FRACAO", dimensoes: "1867x4000x1150" },
   "230386R1": { nome: "FRAÇÃO E2 _2", tipo: "FRACAO", dimensoes: "8000x900x505" },
   "230387R0": { nome: "FRAÇÃO E2 _8", tipo: "FRACAO", dimensoes: "5500x505x400" },
@@ -1949,10 +1927,10 @@ const PLANOS_DB = {
   // Dimensões por preencher: não estão em nenhum ficheiro do sistema.
   "240271R0": { nome: "JAULA SOBRAS 1200", tipo: "EMBALAGEM", dimensoes: "" },
   "250283R0": { nome: "JAULA SOBRAS 1600x1200x800", tipo: "EMBALAGEM", dimensoes: "" },
-  "250317R1": { nome: "EMBALAGEM KC390 UPPER IZDA. V2", tipo: "EMBALAGEM", dimensoes: "" },
-  "250318R1": { nome: "EMBALAGEM KC390 UPPER DCHA. V2", tipo: "EMBALAGEM", dimensoes: "" },
-  "250319R1": { nome: "EMBALAGEM KC390 LOWER IZDA. V2", tipo: "EMBALAGEM", dimensoes: "" },
-  "250320R1": { nome: "EMBALAGEM KC390 LOWER DCHA. V2", tipo: "EMBALAGEM", dimensoes: "" },
+  "250317R2": { nome: "EMBALAGEM KC390 UPPER IZDA. V2", tipo: "EMBALAGEM", dimensoes: "" },
+  "250318R2": { nome: "EMBALAGEM KC390 UPPER DCHA. V2", tipo: "EMBALAGEM", dimensoes: "" },
+  "250319R2": { nome: "EMBALAGEM KC390 LOWER IZDA. V2", tipo: "EMBALAGEM", dimensoes: "" },
+  "250320R2": { nome: "EMBALAGEM KC390 LOWER DCHA. V2", tipo: "EMBALAGEM", dimensoes: "" },
   "260118R0": { nome: "EMBALAGEM SEMI-ASA PRAETOR MARÍTIMA V2", tipo: "EMBALAGEM", dimensoes: "" }
 };
 
@@ -1998,12 +1976,12 @@ const CHECKLIST_TEMPLATE = [
 ];
 
 // Planos do Projecto E2 — requisito Aernnova de registo vídeo das 3 fases
-const E2_PLANOS = ["230269R2", "230312R3", "230324R3", "230325R2"];
+const E2_PLANOS = ["230269R3", "230312R4", "230324R4", "230325R3"];
 const E2_PLANO_LABELS = {
-  "230269R2": "E2 LOWER ESQUERDO",
-  "230312R3": "E2 UPPER DIREITO",
-  "230324R3": "E2 UPPER ESQUERDO",
-  "230325R2": "E2 LOWER DIREITO"
+  "230269R3": "E2 LOWER ESQUERDO",
+  "230312R4": "E2 UPPER DIREITO",
+  "230324R4": "E2 UPPER ESQUERDO",
+  "230325R3": "E2 LOWER DIREITO"
 };
 const E2_FASES = [
   { id: "inicio", num: 1, titulo: "Início do Embalamento", desc: "Identificação do material (PN/SN), estado inicial do produto antes de qualquer acondicionamento." },
@@ -4107,7 +4085,7 @@ function getDados() {
     operadorEmbaresa: (v('operadorEmbaresa', '') || '').trim() || '—',
     operadorEmbaresa2: (v('operadorEmbaresa2', '') || '').trim() || '—',
     operadorCliente: v('operadorCliente', '—'),
-    emailCliente: v('emailCliente', ''),
+    emailCliente: CONFIG.emailDestino,
     emailCC: v('emailCC', ''),
     cronometroInicio: inicioFmt,
     cronometroFim: fimFmt,
@@ -5836,7 +5814,7 @@ function recolherEstadoCompleto() {
       operadorEmbaresa: v('operadorEmbaresa'),
       operadorEmbaresa2: v('operadorEmbaresa2'),
       operadorCliente: v('operadorCliente'),
-      emailCliente: v('emailCliente'),
+      emailCliente: CONFIG.emailDestino,
       emailCC: v('emailCC'),
       requerVideos: v('requerVideos', false)
     },
@@ -6216,7 +6194,7 @@ function carregarDadosRelatorio(dados) {
   // Restaurar campos de formulário
   if (dados.formData) {
     Object.entries(dados.formData).forEach(([k, v]) => {
-      if (v === undefined || v === null) return;
+      if (v === undefined || v === null || k === 'emailCliente') return;
       const el = document.getElementById(k);
       if (!el) return;
       // Tratar checkbox de forma especial
@@ -6752,7 +6730,7 @@ async function confirmarApagarRascunho(key, titulo) {
 // Aplicar dados de um rascunho ao estado (factorizado de tentarRecuperarRascunho)
 async function aplicarRascunho(r) {
   Object.entries(r.formData || {}).forEach(([k, val]) => {
-    if (val === undefined) return;
+    if (val === undefined || k === 'emailCliente') return;
     const el = document.getElementById(k);
     if (!el) return;
     if (el.type === 'checkbox') el.checked = !!val;
