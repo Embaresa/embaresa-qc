@@ -1,6 +1,6 @@
 // Embaresa QC — Service Worker
 // Versão: incrementar quando publicar nova versão para forçar update no telemóvel/tablet
-const CACHE_VERSION = 'embaresa-qc-v1-9-1';   // 30-10-2026: destinatário fixo ssantos@embaresa.com (28-10: planos KC390 V2 → R2 e E2 → 230269R3 / 230312R4 / 230324R4 / 230325R3)
+const CACHE_VERSION = 'embaresa-qc-v1-9-2';   // 06-11-2026: câmara que não liga mostra aviso e «Escolher foto». 30-10-2026: destinatário fixo ssantos@embaresa.com (28-10: planos KC390 V2 → R2 e E2 → 230269R3 / 230312R4 / 230324R4 / 230325R3)
 const ASSETS = [
   './',
   './index.html',

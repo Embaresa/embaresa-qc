@@ -1243,7 +1243,7 @@ const CONFIG = {
   urlEnviarQC: 'https://defaultcade90c14fe343a3860494c20418f8.fb.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/09/workflows/633e49a3b93f41898c5c07626b3d1db6/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=67yNit8mamYQYVo_aRPAWOwgSGGfIH1NA0PDqX0I74w',
 
   // Versão da app (incrementar quando publicar nova versão)
-  versao: '1.9.1'
+  versao: '1.9.2'
 };
 // ============================================
 
@@ -3344,12 +3344,57 @@ function abrirCamara(stepKey) {
     video.setAttribute('playsinline', '');
     video.style.cssText = 'flex:1;width:100%;min-height:0;object-fit:contain;background:#000;';
 
+    // v1.9.2 (06-11-2026) — ela: «não conseguem tirar fotos … não acontece nada». O ecrã da câmara só aparecia DEPOIS de a câmara
+    // ligar: se a câmara não responde (presa por outro programa) ou está bloqueada, ficava tudo parado sem aviso — e o explorador de
+    // recurso também não abria, porque o browser já não o deixa abrir sem um toque novo. Agora o ecrã aparece logo («A ligar a
+    // câmara…»), espera no máximo 10 s e, se falhar, diz porquê e dá o botão «📁 Escolher foto do aparelho» (esse toque abre-o).
+    let _cancelado = false;
+    const espera = document.createElement('div');
+    espera.style.cssText = 'position:fixed;inset:0;z-index:100001;background:#000;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;font-family:Arial;text-align:center;';
+    const esperaTxt = document.createElement('div');
+    esperaTxt.style.cssText = 'font-size:20px;line-height:1.45;max-width:640px;';
+    esperaTxt.textContent = '📷 A ligar a câmara…';
+    const esperaBtns = document.createElement('div');
+    esperaBtns.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;justify-content:center;';
+    const btnCancelarEspera = document.createElement('button');
+    btnCancelarEspera.textContent = '✕ Fechar';
+    btnCancelarEspera.style.cssText = 'background:#334155;color:#fff;border:none;border-radius:14px;padding:16px 22px;font-size:16px;font-weight:700;cursor:pointer;';
+    btnCancelarEspera.onclick = () => { _cancelado = true; _pararCamStream(); espera.remove(); resolve(); };
+    esperaBtns.appendChild(btnCancelarEspera);
+    espera.appendChild(esperaTxt); espera.appendChild(esperaBtns);
+    document.body.appendChild(espera);
+    const comTempo = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => { const e = new Error('A câmara não respondeu'); e.name = 'Timeout'; rej(e); }, ms))]);
+
     // arrancar com a camara memorizada; senao a traseira (environment); fallback: qualquer
     const guardado = localStorage.getItem('qc_camId') || '';
     try {
-      try { await _arrancarCam(video, guardado || null); }
-      catch (e1) { await _arrancarCam(video, null); }
-    } catch (e) { reject(e); return; }
+      await comTempo((async () => {
+        try { await _arrancarCam(video, guardado || null); }
+        catch (e1) { if (_cancelado) throw e1; await _arrancarCam(video, null); }
+        if (_cancelado) _pararCamStream();   // ligou tarde, depois de fecharem ou do tempo acabar
+      })(), 10000);
+    } catch (e) {
+      _cancelado = true; _pararCamStream();
+      console.warn('[Câmara] não ligou:', e && e.name, e);
+      const n = (e && e.name) || '';
+      esperaTxt.textContent =
+        (n === 'NotAllowedError' || n === 'SecurityError')
+          ? '⚠️ A câmara está BLOQUEADA para esta app.\nNo Edge: toque no cadeado 🔒 à esquerda do endereço → Câmara → Permitir, e volte a tocar em «Tirar Foto».'
+        : (n === 'NotFoundError' || n === 'OverconstrainedError')
+          ? '⚠️ Não encontrei nenhuma câmara neste aparelho.'
+        : (n === 'Timeout')
+          ? '⚠️ A câmara não respondeu.\nProvavelmente está presa por outro programa (Câmara do Windows, Teams, ou o quiosque noutra janela). Feche-o e tente outra vez. Se continuar, reinicie o tablet.'
+          : '⚠️ A câmara está a ser usada por outro programa ou não arrancou (' + n + ').\nFeche os outros programas (Câmara do Windows, Teams, quiosque noutra janela) e tente outra vez. Se continuar, reinicie o tablet.';
+      esperaTxt.style.whiteSpace = 'pre-line';
+      const btnFicheiro = document.createElement('button');
+      btnFicheiro.textContent = '📁 Escolher foto do aparelho';
+      btnFicheiro.style.cssText = 'background:#2563eb;color:#fff;border:none;border-radius:14px;padding:16px 22px;font-size:16px;font-weight:800;cursor:pointer;';
+      btnFicheiro.onclick = () => { espera.remove(); capturarFotoFicheiro(stepKey); resolve(); };
+      esperaBtns.insertBefore(btnFicheiro, btnCancelarEspera);
+      return;
+    }
+    if (_cancelado) return;
+    espera.remove();
 
     const conta = document.createElement('div');
     conta.style.cssText = 'position:absolute;top:12px;left:12px;background:rgba(0,0,0,.55);color:#fff;padding:6px 12px;border-radius:20px;font-family:Arial;font-size:14px;';
